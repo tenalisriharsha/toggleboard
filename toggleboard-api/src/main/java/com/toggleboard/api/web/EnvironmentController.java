@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -30,9 +31,10 @@ public class EnvironmentController {
     }
 
     @PostMapping
-    @Operation(summary = "Create an environment and generate its API key")
-    public ResponseEntity<EnvironmentResponse> create(@Valid @RequestBody CreateEnvironmentRequest request) {
-        Environment environment = environmentService.create(request.key(), request.name());
+    @Operation(summary = "Create an environment and generate its API key", description = "Requires X-Role: admin")
+    public ResponseEntity<EnvironmentResponse> create(@Valid @RequestBody CreateEnvironmentRequest request,
+                                                       @RequestHeader(value = "X-Actor", required = false) String actor) {
+        Environment environment = environmentService.create(request.key(), request.name(), actor);
         return ResponseEntity.status(HttpStatus.CREATED).body(EnvironmentResponse.from(environment));
     }
 

@@ -2,6 +2,7 @@ package com.toggleboard.api.repository.memory;
 
 import com.toggleboard.api.domain.Environment;
 import com.toggleboard.api.repository.EnvironmentRepository;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -10,6 +11,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Repository
+@Profile("!dynamodb")
 public class InMemoryEnvironmentRepository implements EnvironmentRepository {
 
     private final Map<String, Environment> byKey = new ConcurrentHashMap<>();
