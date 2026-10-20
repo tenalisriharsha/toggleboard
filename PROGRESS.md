@@ -29,7 +29,7 @@ toggleboard/
 │   ├── security/              API-key filter (evaluation data-plane) + X-Role filter (admin CRUD)
 │   └── exception/              Centralized error handling
 ├── toggleboard-client-sdk/    Java client: local cache + SSE streaming (Phase 3)
-├── toggleboard-console/       Angular admin console (Phase 4)
+├── toggleboard-console/       Angular admin console
 ├── terraform/                 ECS Fargate, DynamoDB, ALB, CloudFront (Phase 5)
 └── docs/screenshots/          Preview images for the README
 ```
@@ -154,12 +154,43 @@ toggleboard/
       demo's push-notification flow, the latency benchmark, the load test, and a
       refreshed full-suite `mvn test` run
 
-### Phase 4 — Angular Admin Console (Session 4)
-- [ ] Angular workspace scaffold (`toggleboard-console`)
-- [ ] Flags list + detail/edit view with rollout sliders
-- [ ] Environments and segments management screens
-- [ ] Audit log viewer
-- [ ] Wired to the real API (environment switcher, API key display)
+### Phase 4 — Angular Admin Console (Session 4) ✅ DONE
+- [x] Angular 19 workspace scaffold (`toggleboard-console`, standalone components, no
+      NgModules, Angular CLI's own routing/build setup — no third-party UI library)
+- [x] Flags list (kill-switch toggle inline, type/status/rollout/segment-count columns,
+      delete) + a create/edit form: rollout-percentage slider for boolean flags, a
+      variant editor with add/remove and a live weight-sum check for multivariate
+      flags (plus a default-variant picker), and a shared targeting-rules editor
+      (`TargetingRulesEditorComponent`, in `shared/`) reused by both flags and segments
+- [x] Environments screen: create an environment, see every environment with its
+      generated API key (copy-to-clipboard) and creation time, switch which one is
+      "current"
+- [x] Segments list + create/edit form (same shared targeting-rules editor as flags)
+- [x] Audit log viewer: entity-type and limit filters, newest first, each row
+      expandable to a side-by-side before/after JSON diff
+- [x] Wired to the real, running `toggleboard-api`: an `ApiService` for every admin
+      CRUD endpoint, an `EnvironmentContextService` (signal-based, persisted to
+      `localStorage`) holding the current environment and an editable "actor" name,
+      and an `HttpInterceptorFn` that stamps every mutating request with
+      `X-Role: admin` + `X-Actor: <actor>` so the console never has to pass those
+      headers at each call site
+- [x] `WebConfig` (`toggleboard-api`): a `CorsRegistry` allowing the console's two dev
+      server origins (`localhost:4200` / `127.0.0.1:4200`) to call the API directly
+      from the browser, plus `WebConfigTest` (2 new tests: an allowed-origin preflight
+      succeeds, an unknown origin is rejected) — 151 tests in `toggleboard-api` now
+      (was 149 + the 2 CORS tests)
+- [x] 38 Karma/Jasmine unit tests in `toggleboard-console` (headless Chrome): the
+      shared rules editor's row add/remove/value-parsing, `ApiService`'s URL/param
+      construction (`HttpClientTestingModule`), `EnvironmentContextService`'s
+      selection-persistence and actor-default/trim logic, and every feature
+      component's validation and HTTP-interaction behavior (e.g. a multivariate flag
+      whose variant weights don't sum to 100 is rejected client-side before the API
+      is even called)
+- [x] README Preview section refreshed with 6 new console screenshots (23 total):
+      flags list, boolean flag editor, multivariate flag editor, segments list, audit
+      log with an expanded diff, and the environments screen — captured against the
+      real running API + console (seeded with realistic demo data: two environments,
+      two segments, three flags including one kill-switch flip) via headless Chromium
 
 ### Phase 5 — Infrastructure & Final Polish (Session 5)
 - [ ] Terraform: ECS Fargate service, DynamoDB tables, ALB, CloudFront for the console
@@ -195,31 +226,66 @@ toggleboard/
   uses that to abort an in-flight SSE connection immediately on `close()` rather than
   waiting for a graceful (and here, never-arriving) end of stream.
 
+**Design decisions from Session 4:**
+- `WebConfig` uses `WebMvcConfigurer.addCorsMappings` rather than registering a
+  `CorsConfigurationSource` bean: this project has no Spring Security dependency, and
+  a bare `CorsConfigurationSource` bean is only auto-wired into the request pipeline
+  when Spring Security is on the classpath. `WebMvcConfigurer` is Spring MVC's own CORS
+  hook and works without it.
+- The console never calls the client-SDK data-plane (`/evaluate`, `/stream`), so it
+  never needs an environment's API key — only `X-Role: admin` (via an interceptor) for
+  every admin CRUD mutation. The `X-Actor` header is a plain text field in the top bar,
+  editable per browser session and persisted to `localStorage`, so entries one person
+  makes through the console are distinguishable from another's in the audit log.
+- The shared `TargetingRulesEditorComponent` (`shared/targeting-rules-editor/`) edits
+  rules as `{ attribute, operator, valuesText, overrideVariantKey }` rows internally —
+  `valuesText` is the comma-separated display string, split/trimmed into the real
+  `values: string[]` only when emitting a change. This keeps the input field's cursor
+  and in-progress typing (e.g. a trailing comma while adding a second value) from being
+  destroyed by round-tripping through an array on every keystroke. `overrideVariantKey`
+  is only shown when the parent flag is multivariate (`allowOverride` input); segments
+  never pass it.
+- No reactive-forms (`FormGroup`/`FormArray`) anywhere — every form is a plain
+  component-owned object mutated via native `(input)`/`(change)` DOM events, matching
+  the rest of the console's style and avoiding an extra Angular Forms dependency the
+  variant/rule arrays don't really need (they're small, flat, and don't need
+  cross-field validators beyond what `save()` already checks by hand before calling
+  the API).
+- A plain-text `X-Actor` header and a self-declared `X-Role: admin` are placeholders,
+  same as the API's own RBAC placeholder from Session 2 — there's still no real user
+  identity anywhere in this project. A later phase could add that, but it's out of
+  scope for this 5-session sprint.
+
 ## Where to resume (next session)
 
-Start Phase 4 — the Angular admin console (`toggleboard-console`):
-1. Scaffold an Angular workspace at `toggleboard-console/` (Angular CLI, standalone
-   components are fine — no need for NgModules). It's a separate app, not a Maven
-   module; it talks to `toggleboard-api` over HTTP the same way the client SDK does,
-   just using the admin CRUD endpoints (`X-Role: admin`) instead of the data-plane.
-2. Flags list + detail/edit view: boolean vs. multivariate, rollout percentage slider,
-   targeting rules editor, segment picker, kill switch toggle.
-3. Environments screen (create environment, show its API key) and segments management
-   (reusable targeting-rule groups).
-4. Audit log viewer: filterable by entity type, newest first (the API already supports
-   this via `GET /environments/{env}/audit?entityType=...&limit=...`).
-5. An environment switcher in the UI chrome, and a way to see/copy the current
-   environment's API key (useful for pointing the client SDK or a `curl` call at it).
-6. Wire it all to the real, running `toggleboard-api` (CORS will need enabling on the
-   API for the console's dev-server origin — check whether Spring's default same-origin
-   policy needs a `CorsConfigurationSource` bean, since there currently isn't one).
+Start Phase 5 — infrastructure and final polish, the last session:
+1. Terraform (`terraform/`): an ECS Fargate service running `toggleboard-api`'s
+   container, the four DynamoDB tables (flags/environments/segments/audit — match
+   `DynamoDbTableInitializer`'s schema so Terraform-provisioned tables are compatible,
+   or just let the app's own initializer create them and have Terraform own the table
+   *resources* either way — decide which on arrival), an ALB in front of ECS, and
+   CloudFront serving `toggleboard-console`'s built static files (`ng build`'s
+   `dist/toggleboard-console/`) from an S3 origin. **No real AWS account exists here —
+   only dummy credentials.** Validate with `terraform fmt`, `terraform validate`, and
+   either `terraform plan` against a mocked/local backend or `terraform test` with
+   `mock_provider` — never `terraform apply`/`destroy` against anything real.
+2. Full test suite green end-to-end: `mvn test` (api + sdk) and the console's
+   `npm test -- --watch=false --browsers=ChromeHeadless`, both run fresh at the end of
+   the session, not just carried over from this session's run.
+3. README finalized — check every section still matches reality (phase statuses, test
+   counts, the architecture tree, the Terraform section once it exists).
+4. Write `DAILY_REPORT.md`: what was built across all 5 sessions, final test results,
+   known limitations (no real auth/identity, RBAC and the API key are both
+   self-declared placeholders, Terraform is validated but never applied against a real
+   account), and future ideas.
+5. Flip `STATUS` below to `COMPLETE` only once all of the above is actually true.
 
-No known blockers carried over from Session 3 — the client SDK, SSE streaming, the
-latency benchmark and the load test are all done and tested. `toggleboard-api`'s test
-suite now has a test-scope dependency on `toggleboard-client-sdk`
-(`toggleboard-api/pom.xml`); if Phase 4 adds any new cross-module test dependency, run
-`mvn install -DskipTests` at the repo root first so the reactor can resolve it (a plain
-`mvn -pl <module> test` without `-am` only works once the dependency is already
-installed locally).
+No known blockers carried over from Session 4 — the console, its 38 tests, and the
+CORS config are all done and verified against the real running API (not just unit
+tests: a manual smoke test seeded two environments, two segments, three flags and a
+kill-switch flip, then screenshotted all six distinct views). Chromium (for both the
+console's Karma tests and the Playwright screenshot capture) is already installed on
+this machine at `~/Library/Caches/ms-playwright/` from this session — Phase 5 doesn't
+need to reinstall it unless that cache was cleared.
 
 STATUS: IN_PROGRESS
