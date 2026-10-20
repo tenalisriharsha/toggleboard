@@ -36,6 +36,17 @@ evaluation endpoint. 149 tests in `toggleboard-api` + 6 in `toggleboard-client-s
 (155 total), including a real end-to-end integration test that runs the SDK against
 the actual running server.
 
+**Session 4 of 5 — Angular admin console: done.** A standalone `toggleboard-console`
+Angular 19 app (standalone components, no NgModules) that talks to `toggleboard-api`'s
+admin CRUD endpoints directly from the browser: a flags list with an inline kill-switch
+toggle, a create/edit form with a rollout-percentage slider, a variant editor with a
+live weight-sum check, a shared targeting-rules editor (reused for both flags and
+segments), a segment picker, a segments list and editor, an audit log viewer with
+expandable before/after JSON diffs, and an environments screen to create environments
+and copy their API keys. A `CorsRegistry` bean on the API now allows the console's dev
+server to call it directly. 151 tests in `toggleboard-api` (new: a CORS preflight test)
++ 6 in `toggleboard-client-sdk` + 38 in `toggleboard-console` (195 total).
+
 ## Preview
 
 **Swagger / OpenAPI docs** — every endpoint is documented and callable from the browser.
@@ -122,6 +133,36 @@ failures.
 
 ![mvn test (full suite)](docs/screenshots/17-terminal-mvn-test-full.png)
 
+**Admin console — flags list** — every flag in an environment with its type, an
+inline kill-switch toggle, rollout percentage, and how many segments it references.
+
+![Console flags list](docs/screenshots/18-console-flags-list.png)
+
+**Admin console — editing a boolean flag** — the rollout-percentage slider and the
+shared targeting-rules editor, with the flag's referenced segments checked below.
+
+![Console boolean flag editor](docs/screenshots/19-console-flag-edit-boolean.png)
+
+**Admin console — editing a multivariate flag** — the variant editor with a live
+weight-sum check (must total 100) and a default-variant picker.
+
+![Console multivariate flag editor](docs/screenshots/20-console-flag-edit-multivariate.png)
+
+**Admin console — segments** — the same reusable, named targeting-rule groups the
+API exposes, listed and ready to edit or reference from a flag.
+
+![Console segments list](docs/screenshots/21-console-segments-list.png)
+
+**Admin console — audit log** — every create, update, delete and kill-switch flip,
+with an expandable before/after JSON diff for the selected entry.
+
+![Console audit log](docs/screenshots/22-console-audit-log.png)
+
+**Admin console — environments** — create an environment, see its generated API key,
+and switch which environment the rest of the console is pointed at.
+
+![Console environments](docs/screenshots/23-console-environments.png)
+
 ## Architecture
 
 ```
@@ -133,9 +174,14 @@ toggleboard/
 │   ├── web/                    REST controllers + DTOs (including the SSE /stream endpoint)
 │   ├── streaming/               FlagChangePublisher: fans out flag-change events over SSE
 │   ├── security/               API-key filter (data-plane) + X-Role filter (admin CRUD)
+│   ├── config/                  Domain beans, DynamoDB client, CORS for the console's dev server
 │   └── exception/               Centralized error handling
 ├── toggleboard-client-sdk/   Standalone Java client: local cache, SSE push + polling fallback
-├── toggleboard-console/      Angular admin console                        (Phase 4)
+├── toggleboard-console/      Angular admin console: flags, segments, audit log, environments
+│   └── src/app/
+│       ├── core/                ApiService, EnvironmentContextService, admin-headers interceptor
+│       ├── shared/               TargetingRulesEditorComponent (flags + segments both use it)
+│       └── features/             flags/, segments/, audit/, environments/ — one route each
 ├── terraform/                 ECS Fargate, DynamoDB, ALB, CloudFront       (Phase 5)
 └── docs/screenshots/         Preview images for this README
 ```
@@ -211,6 +257,30 @@ header: `GET` requests need no role at all, but a mutation (`POST`/`PUT`/`DELETE
 requires `X-Role: admin` — a missing header is `401`, `X-Role: viewer` is `403`. This
 is a lightweight placeholder ahead of real identity/authorization in a later phase.
 
+## Admin console
+
+`toggleboard-console` is an Angular 19 app (standalone components, no NgModules) that
+talks to `toggleboard-api`'s admin CRUD endpoints directly from the browser — it never
+touches the client-SDK data-plane (`/evaluate`, `/stream`), so it never needs an API
+key. Every mutating request is automatically sent with `X-Role: admin` and an
+`X-Actor` header (editable in the top bar, so the audit log can tell console changes
+apart from each other) via an HTTP interceptor; the API's `CorsRegistry` bean allows
+the console's dev-server origins (`localhost:4200` / `127.0.0.1:4200`).
+
+Requires Node and npm. With `toggleboard-api` already running on `localhost:8080`
+(see above):
+
+```bash
+cd toggleboard-console
+npm install
+npm start   # ng serve — http://localhost:4200
+```
+
+The console has no environment of its own to start with — the **Environments** page
+lets you create one and copy its generated API key (handy for pointing a `curl` call
+or the client SDK at it), and an environment switcher in the top bar controls which
+environment the rest of the console (flags, segments, audit log) is scoped to.
+
 ## Client SDK
 
 `toggleboard-client-sdk` is a standalone Java module — it depends on nothing but
@@ -246,18 +316,29 @@ for a complete runnable walkthrough, and the screenshot above for its output.
 ## Testing
 
 ```bash
-mvn test
+mvn test                                    # toggleboard-api + toggleboard-client-sdk
+cd toggleboard-console && npm test -- --watch=false --browsers=ChromeHeadless
 ```
 
-149 tests in `toggleboard-api` + 6 in `toggleboard-client-sdk` (155 total):
-stable-hash rollout determinism and distribution, flag evaluation (kill switch,
-targeting rules, segment matching, boolean rollout, multivariate variant selection
-and overrides), repository CRUD for every entity against **both** the in-memory and
-the DynamoDB-backed implementations (via embedded DynamoDB Local — no Docker),
-service-layer validation and audit recording, MockMvc integration tests for every
-REST endpoint (including the API-key filter's and the `X-Role` filter's 401/403
-paths and the SSE stream's async lifecycle), the client SDK's own tests against an
-in-process JDK `HttpServer` (evaluation, caching/fallback, polling, SSE push and
-reconnect — no Spring context needed), an end-to-end integration test that runs the
-SDK against the real running server, and a hand-rolled evaluation-latency benchmark
-and concurrent load test (see the screenshots above for sample numbers).
+151 tests in `toggleboard-api` + 6 in `toggleboard-client-sdk` + 38 in
+`toggleboard-console` (195 total):
+
+- **`toggleboard-api`**: stable-hash rollout determinism and distribution, flag
+  evaluation (kill switch, targeting rules, segment matching, boolean rollout,
+  multivariate variant selection and overrides), repository CRUD for every entity
+  against **both** the in-memory and the DynamoDB-backed implementations (via embedded
+  DynamoDB Local — no Docker), service-layer validation and audit recording, MockMvc
+  integration tests for every REST endpoint (including the API-key filter's and the
+  `X-Role` filter's 401/403 paths, the SSE stream's async lifecycle, and the CORS
+  preflight the console's dev server relies on), and a hand-rolled evaluation-latency
+  benchmark and concurrent load test (see the screenshots above for sample numbers).
+- **`toggleboard-client-sdk`**: its own tests against an in-process JDK `HttpServer`
+  (evaluation, caching/fallback, polling, SSE push and reconnect — no Spring context
+  needed), plus an end-to-end integration test (in `toggleboard-api`) that runs the
+  SDK against the real running server.
+- **`toggleboard-console`**: Karma/Jasmine unit tests (headless Chrome) for every
+  component and service — API URL construction, the environment-context service's
+  current-environment and actor persistence, the shared targeting-rules editor's
+  add/remove/value-parsing logic, each feature's form validation (e.g. a multivariate
+  flag whose variant weights don't sum to 100 is rejected before the API is even
+  called) and its HTTP interactions, mocked with `provideHttpClientTesting()`.
