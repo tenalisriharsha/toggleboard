@@ -1,0 +1,52 @@
+.rules-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.empty {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin: 0 0 4px;
+}
+
+.rule-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 160px;
+}
+
+.field.operator {
+  flex: 0 0 130px;
+}
+
+.field.override {
+  flex: 0 0 170px;
+}
+
+.field input,
+.field select {
+  width: 100%;
+}
+
+.remove {
+  border: none;
+  background: transparent;
+  color: var(--danger);
+  font-size: 16px;
+  padding: 4px 8px;
+  height: fit-content;
+}

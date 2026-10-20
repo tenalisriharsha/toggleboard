@@ -1,0 +1,150 @@
+<div class="page">
+  <div class="page-header">
+    <h1>{{ mode === 'create' ? 'New flag' : 'Edit flag' }}</h1>
+    <a routerLink="/flags">&larr; Back to flags</a>
+  </div>
+
+  @if (loading) {
+    <p class="empty">Loading…</p>
+  } @else {
+    <div class="card">
+      <div class="form-grid">
+        <div class="field">
+          <label>Key</label>
+          @if (mode === 'create') {
+            <input type="text" placeholder="e.g. new-checkout" [value]="flagKey" (input)="flagKey = $any($event.target).value" />
+          } @else {
+            <input type="text" class="mono" [value]="flagKey" disabled />
+          }
+        </div>
+
+        <div class="field">
+          <label>Name</label>
+          <input type="text" [value]="form.name" (input)="form.name = $any($event.target).value" />
+        </div>
+
+        <div class="field full">
+          <label>Description</label>
+          <textarea rows="2" [value]="form.description" (input)="form.description = $any($event.target).value"></textarea>
+        </div>
+
+        <div class="field">
+          <label>Type</label>
+          @if (mode === 'create') {
+            <select [value]="form.type" (change)="onTypeChange($any($event.target).value)">
+              <option value="BOOLEAN">Boolean</option>
+              <option value="MULTIVARIATE">Multivariate</option>
+            </select>
+          } @else {
+            <span class="badge neutral">{{ form.type }}</span>
+          }
+        </div>
+
+        <div class="field switch-field">
+          <label>Kill switch</label>
+          <button type="button" class="kill-switch" [class.on]="form.enabled" (click)="form.enabled = !form.enabled">
+            {{ form.enabled ? 'Enabled' : 'Disabled' }}
+          </button>
+        </div>
+      </div>
+
+      @if (form.type === 'BOOLEAN') {
+        <div class="section">
+          <label>Rollout percentage</label>
+          <div class="rollout-row">
+            <input
+              type="range"
+              min="0"
+              max="100"
+              [value]="form.rolloutPercentage"
+              (input)="form.rolloutPercentage = +$any($event.target).value"
+            />
+            <span class="rollout-value mono">{{ form.rolloutPercentage }}%</span>
+          </div>
+          <p class="hint">Of subjects not already matched by a targeting rule or segment, this percentage resolve to true.</p>
+        </div>
+      } @else {
+        <div class="section">
+          <div class="section-header">
+            <label>Variants</label>
+            <span class="weight-total mono" [class.bad]="variantWeightTotal !== 100">Total weight: {{ variantWeightTotal }}</span>
+          </div>
+          @for (variant of form.variants; track $index) {
+            <div class="variant-row">
+              <input
+                type="text"
+                placeholder="key"
+                class="mono"
+                [value]="variant.key"
+                (change)="updateVariant($index, { key: $any($event.target).value })"
+              />
+              <input
+                type="text"
+                placeholder="value"
+                [value]="variant.value"
+                (change)="updateVariant($index, { value: $any($event.target).value })"
+              />
+              <input
+                type="number"
+                min="0"
+                max="100"
+                class="weight-input"
+                [value]="variant.weight"
+                (change)="updateVariant($index, { weight: +$any($event.target).value })"
+              />
+              <span class="weight-pct">%</span>
+              <button type="button" class="remove" (click)="removeVariant($index)">&times;</button>
+            </div>
+          }
+          <button type="button" (click)="addVariant()">+ Add variant</button>
+
+          <div class="field default-variant">
+            <label>Default variant</label>
+            <select [value]="form.defaultVariantKey" (change)="form.defaultVariantKey = $any($event.target).value">
+              @for (key of variantKeys; track key) {
+                <option [value]="key">{{ key }}</option>
+              }
+            </select>
+          </div>
+        </div>
+      }
+
+      <div class="section">
+        <label>Targeting rules</label>
+        <p class="hint">Matched directly on the subject's attributes, ahead of segments and the rollout.</p>
+        <app-targeting-rules-editor
+          [rules]="form.targetingRules"
+          [availableVariantKeys]="variantKeys"
+          [allowOverride]="form.type === 'MULTIVARIATE'"
+          (rulesChange)="onRulesChange($event)"
+        ></app-targeting-rules-editor>
+      </div>
+
+      <div class="section">
+        <label>Segments</label>
+        @if (allSegments.length === 0) {
+          <p class="hint">No segments in this environment yet.</p>
+        } @else {
+          <div class="segment-list">
+            @for (segment of allSegments; track segment.key) {
+              <label class="segment-checkbox">
+                <input
+                  type="checkbox"
+                  [checked]="form.segmentKeys.includes(segment.key)"
+                  (change)="toggleSegment(segment.key)"
+                />
+                <span class="mono">{{ segment.key }}</span>
+                <span class="segment-name">{{ segment.name }}</span>
+              </label>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="actions">
+        <button class="primary" [disabled]="saving" (click)="save()">{{ saving ? 'Saving…' : 'Save' }}</button>
+        <a routerLink="/flags"><button type="button">Cancel</button></a>
+      </div>
+    </div>
+  }
+</div>

@@ -1,0 +1,50 @@
+.page h1 {
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  color: var(--text-dim);
+  margin: 0 0 24px;
+}
+
+.card {
+  margin-bottom: 20px;
+}
+
+.card h2 {
+  margin: 0 0 14px;
+  font-size: 15px;
+}
+
+.create-form {
+  display: flex;
+  gap: 14px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.empty {
+  color: var(--text-dim);
+}
+
+tr.current {
+  background: rgba(91, 140, 255, 0.07);
+}
+
+.apikey-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.apikey-cell span {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
