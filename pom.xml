@@ -14,6 +14,7 @@
 
   <modules>
     <module>toggleboard-api</module>
+    <module>toggleboard-client-sdk</module>
   </modules>
 
   <properties>

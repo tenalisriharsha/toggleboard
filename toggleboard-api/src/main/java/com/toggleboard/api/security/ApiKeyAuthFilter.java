@@ -18,16 +18,14 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Guards the evaluation data-plane: a request for
- * {@code /api/v1/environments/{environmentKey}/flags/{flagKey}/evaluate} must
- * carry an {@code X-API-Key} header matching that environment's key. Admin
- * CRUD endpoints are untouched here; role-based access for those arrives in
- * a later phase.
+ * Guards the client SDK data-plane ({@link DataPlanePaths}: flag evaluation
+ * and the SSE change stream) — a request must carry an {@code X-API-Key}
+ * header matching that environment's key. Admin CRUD endpoints are untouched
+ * here; those get role-based access via {@link RoleAuthFilter}.
  */
 @Component
 public class ApiKeyAuthFilter extends OncePerRequestFilter {
 
-    private static final String PROTECTED_PATTERN = EvaluationPaths.PATTERN;
     private static final String API_KEY_HEADER = "X-API-Key";
 
     private final EnvironmentRepository environmentRepository;
@@ -43,12 +41,16 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         String path = requestPath(request);
-        if (!pathMatcher.match(PROTECTED_PATTERN, path)) {
+        String matchedPattern = DataPlanePaths.ALL.stream()
+                .filter(pattern -> pathMatcher.match(pattern, path))
+                .findFirst()
+                .orElse(null);
+        if (matchedPattern == null) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        Map<String, String> pathVariables = pathMatcher.extractUriTemplateVariables(PROTECTED_PATTERN, path);
+        Map<String, String> pathVariables = pathMatcher.extractUriTemplateVariables(matchedPattern, path);
         String environmentKey = pathVariables.get("environmentKey");
         String apiKey = request.getHeader(API_KEY_HEADER);
 
