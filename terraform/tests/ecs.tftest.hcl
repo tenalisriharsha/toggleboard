@@ -98,7 +98,7 @@ run "api_security_group_only_admits_the_alb" {
   }
 
   assert {
-    condition     = alltrue([for rule in aws_security_group.api.ingress : rule.cidr_blocks == null || length(rule.cidr_blocks) == 0])
+    condition     = alltrue([for rule in aws_security_group.api.ingress : try(length(rule.cidr_blocks), 0) == 0])
     error_message = "the api security group must not accept inbound traffic from arbitrary CIDRs"
   }
 }
