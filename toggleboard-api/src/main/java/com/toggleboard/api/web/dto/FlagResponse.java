@@ -17,14 +17,19 @@ public record FlagResponse(
         int rolloutPercentage,
         List<VariantDto> variants,
         String defaultVariantKey,
+        List<TargetingRuleDto> targetingRules,
+        List<String> segmentKeys,
         Instant createdAt,
         Instant updatedAt
 ) {
     public static FlagResponse from(Flag flag) {
         List<VariantDto> variants = flag.variants() == null ? List.of() :
                 flag.variants().stream().map(VariantDto::from).toList();
+        List<TargetingRuleDto> targetingRules = flag.targetingRules() == null ? List.of() :
+                flag.targetingRules().stream().map(TargetingRuleDto::from).toList();
+        List<String> segmentKeys = flag.segmentKeys() == null ? List.of() : flag.segmentKeys();
         return new FlagResponse(flag.id(), flag.key(), flag.environmentKey(), flag.name(), flag.description(),
                 flag.type(), flag.enabled(), flag.rolloutPercentage(), variants, flag.defaultVariantKey(),
-                flag.createdAt(), flag.updatedAt());
+                targetingRules, segmentKeys, flag.createdAt(), flag.updatedAt());
     }
 }

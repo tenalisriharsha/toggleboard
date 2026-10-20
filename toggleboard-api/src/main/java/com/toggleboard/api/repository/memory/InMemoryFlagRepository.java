@@ -2,6 +2,7 @@ package com.toggleboard.api.repository.memory;
 
 import com.toggleboard.api.domain.Flag;
 import com.toggleboard.api.repository.FlagRepository;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -16,6 +17,7 @@ import java.util.stream.Collectors;
  * implementation of this interface, nothing in the service layer changes.
  */
 @Repository
+@Profile("!dynamodb")
 public class InMemoryFlagRepository implements FlagRepository {
 
     private final Map<String, Flag> byId = new ConcurrentHashMap<>();

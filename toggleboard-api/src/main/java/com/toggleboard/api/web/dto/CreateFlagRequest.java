@@ -18,6 +18,8 @@ public record CreateFlagRequest(
         boolean enabled,
         @Min(0) @Max(100) int rolloutPercentage,
         @Valid List<VariantDto> variants,
-        String defaultVariantKey
+        String defaultVariantKey,
+        @Valid List<TargetingRuleDto> targetingRules,
+        List<String> segmentKeys
 ) {
 }

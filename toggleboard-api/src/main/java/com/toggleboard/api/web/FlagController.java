@@ -1,9 +1,11 @@
 package com.toggleboard.api.web;
 
 import com.toggleboard.api.domain.Flag;
+import com.toggleboard.api.domain.TargetingRule;
 import com.toggleboard.api.service.FlagService;
 import com.toggleboard.api.web.dto.CreateFlagRequest;
 import com.toggleboard.api.web.dto.FlagResponse;
+import com.toggleboard.api.web.dto.TargetingRuleDto;
 import com.toggleboard.api.web.dto.UpdateFlagRequest;
 import com.toggleboard.api.web.dto.VariantDto;
 import io.swagger.v3.oas.annotations.Operation;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -34,12 +37,13 @@ public class FlagController {
     }
 
     @PostMapping
-    @Operation(summary = "Create a flag in an environment")
+    @Operation(summary = "Create a flag in an environment", description = "Requires X-Role: admin")
     public ResponseEntity<FlagResponse> create(@PathVariable String environmentKey,
-                                                @Valid @RequestBody CreateFlagRequest request) {
+                                                @Valid @RequestBody CreateFlagRequest request,
+                                                @RequestHeader(value = "X-Actor", required = false) String actor) {
         Flag flag = flagService.create(environmentKey, request.key(), request.name(), request.description(),
                 request.type(), request.enabled(), request.rolloutPercentage(), toDomain(request.variants()),
-                request.defaultVariantKey());
+                request.defaultVariantKey(), toRules(request.targetingRules()), request.segmentKeys(), actor);
         return ResponseEntity.status(HttpStatus.CREATED).body(FlagResponse.from(flag));
     }
 
@@ -56,18 +60,21 @@ public class FlagController {
     }
 
     @PutMapping("/{flagKey}")
-    @Operation(summary = "Update a flag's targeting, rollout or kill switch state")
+    @Operation(summary = "Update a flag's targeting, rollout or kill switch state", description = "Requires X-Role: admin")
     public FlagResponse update(@PathVariable String environmentKey, @PathVariable String flagKey,
-                                @Valid @RequestBody UpdateFlagRequest request) {
+                                @Valid @RequestBody UpdateFlagRequest request,
+                                @RequestHeader(value = "X-Actor", required = false) String actor) {
         Flag flag = flagService.update(environmentKey, flagKey, request.name(), request.description(),
-                request.enabled(), request.rolloutPercentage(), toDomain(request.variants()), request.defaultVariantKey());
+                request.enabled(), request.rolloutPercentage(), toDomain(request.variants()), request.defaultVariantKey(),
+                toRules(request.targetingRules()), request.segmentKeys(), actor);
         return FlagResponse.from(flag);
     }
 
     @DeleteMapping("/{flagKey}")
-    @Operation(summary = "Delete a flag")
-    public ResponseEntity<Void> delete(@PathVariable String environmentKey, @PathVariable String flagKey) {
-        flagService.delete(environmentKey, flagKey);
+    @Operation(summary = "Delete a flag", description = "Requires X-Role: admin")
+    public ResponseEntity<Void> delete(@PathVariable String environmentKey, @PathVariable String flagKey,
+                                        @RequestHeader(value = "X-Actor", required = false) String actor) {
+        flagService.delete(environmentKey, flagKey, actor);
         return ResponseEntity.noContent().build();
     }
 
@@ -76,5 +83,12 @@ public class FlagController {
             return List.of();
         }
         return variants.stream().map(VariantDto::toDomain).toList();
+    }
+
+    private List<TargetingRule> toRules(List<TargetingRuleDto> rules) {
+        if (rules == null) {
+            return List.of();
+        }
+        return rules.stream().map(TargetingRuleDto::toDomain).toList();
     }
 }

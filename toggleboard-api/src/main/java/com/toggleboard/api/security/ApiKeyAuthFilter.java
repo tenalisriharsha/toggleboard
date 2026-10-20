@@ -27,7 +27,7 @@ import java.util.Optional;
 @Component
 public class ApiKeyAuthFilter extends OncePerRequestFilter {
 
-    private static final String PROTECTED_PATTERN = "/api/v1/environments/{environmentKey}/flags/{flagKey}/evaluate";
+    private static final String PROTECTED_PATTERN = EvaluationPaths.PATTERN;
     private static final String API_KEY_HEADER = "X-API-Key";
 
     private final EnvironmentRepository environmentRepository;
@@ -66,17 +66,8 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    /**
-     * {@code getServletPath()} returns "" when the DispatcherServlet owns the
-     * default ("/") mapping, so the full path has to come from the URI instead.
-     */
     private String requestPath(HttpServletRequest request) {
-        String uri = request.getRequestURI();
-        String contextPath = request.getContextPath();
-        if (contextPath != null && !contextPath.isEmpty() && uri.startsWith(contextPath)) {
-            return uri.substring(contextPath.length());
-        }
-        return uri;
+        return RequestPaths.resolve(request);
     }
 
     private void reject(HttpServletResponse response, int status, String message) throws IOException {
