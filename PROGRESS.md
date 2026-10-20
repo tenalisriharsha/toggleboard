@@ -192,13 +192,32 @@ toggleboard/
       real running API + console (seeded with realistic demo data: two environments,
       two segments, three flags including one kill-switch flip) via headless Chromium
 
-### Phase 5 — Infrastructure & Final Polish (Session 5)
-- [ ] Terraform: ECS Fargate service, DynamoDB tables, ALB, CloudFront for the console
-      (validated with `terraform fmt`/`validate`/`plan` and mocked-provider tests only —
-      no real AWS account is used)
-- [ ] Full test suite green end-to-end (API, SDK, console)
-- [ ] README finalized, DAILY_REPORT.md written
-- [ ] STATUS flipped to COMPLETE below
+### Phase 5 — Infrastructure & Final Polish (Session 5) ✅ DONE
+- [x] Terraform (`terraform/`): ECS Fargate running `toggleboard-api` behind an
+      internet-facing ALB (target group health-checking a new `GET /actuator/health`
+      endpoint), the four DynamoDB tables with names/keys/GSIs matching
+      `DynamoDbTableInitializer`'s schema exactly, and a private S3 bucket + CloudFront
+      distribution (Origin Access Control, SPA deep-link fallback to `index.html`)
+      serving the console's static build; the ECS task role is scoped to only those
+      four tables, not `"Resource": "*"`
+- [x] `spring-boot-starter-actuator` added to `toggleboard-api`, exposing only
+      `GET /actuator/health` (no auth, `management.endpoints.web.exposure.include:
+      health`) — the ALB target group's health check and a new `HealthEndpointTest`
+- [x] Validated with `terraform fmt -check -recursive` and `terraform validate` (both
+      clean, zero formatting diffs) and a `terraform test` suite — 4 files under
+      `terraform/tests/`, 8 assertions total, run against `mock_provider` — since no
+      real AWS account exists in this environment; never `terraform apply`/`plan`
+      against anything real
+- [x] Full test suite re-run green end-to-end: 152 tests in `toggleboard-api` (up from
+      149 — new: `HealthEndpointTest`) + 6 in `toggleboard-client-sdk` + 38 in
+      `toggleboard-console` (196 total), plus the 8 Terraform test assertions
+- [x] README finalized: Session 5 status, a refreshed Architecture tree, a new
+      Infrastructure section, updated Testing section/counts, and 3 new Preview
+      screenshots (26 total): `terraform fmt`/`validate`, `terraform test`, and the
+      final full `mvn test` run
+- [x] `DAILY_REPORT.md` written: what was built each session, final test results,
+      known limitations, future ideas
+- [x] STATUS flipped to COMPLETE below
 
 **Design decisions from Session 3:**
 - `DataPlanePaths` (renamed from the old single-pattern `EvaluationPaths`) now lists
@@ -256,36 +275,49 @@ toggleboard/
   identity anywhere in this project. A later phase could add that, but it's out of
   scope for this 5-session sprint.
 
-## Where to resume (next session)
+**Design decisions from Session 5:**
+- Every `data "aws_iam_policy_document"` block was replaced with an equivalent
+  `jsonencode(...)` local/inline value. `terraform test`'s `mock_provider` mocks data
+  sources as well as resources, and a mocked `aws_iam_policy_document.json` comes back
+  as a synthetic, non-JSON string — which then fails the real provider's own JSON
+  validation on arguments like `assume_role_policy` the moment a run reaches that
+  resource, even under `command = plan`. `jsonencode` is a pure Terraform-language
+  function (not a provider call), so it stays correct under mocking and needed no
+  behavior change for a real `apply`.
+- The ECS task role's DynamoDB policy interpolates the four tables' ARNs, which are
+  genuinely unknown at plan time for a **mocked** resource (same as they'd be unknown
+  for a real one before its first apply) — so the `task_role_is_scoped_to_only_the_
+  toggleboard_tables` test run uses `command = apply`, not `plan`, and the file's
+  `override_resource` blocks give the referenced mocked resources realistic-looking
+  ARNs so the real AWS provider's own ARN-format validation (on `execution_role_arn`,
+  `load_balancer_arn`, etc.) doesn't reject `mock_provider`'s default random-id value
+  for a computed ARN attribute.
+- `terraform test` assertions that read a `TypeSet` attribute (e.g. a security group's
+  `ingress` blocks, `requires_compatibilities`) can't index it (`ingress[0]` errors
+  with "Elements of a set are identified only by their value"); every such assertion
+  uses `contains(...)`/`anytrue([for ... in ... : ...])` instead, same as Terraform
+  language rules outside of tests.
+- No NAT gateway: the VPC has two public subnets only, and the Fargate tasks run with
+  `assign_public_ip = true` instead of sitting in a private subnet behind one. The
+  only outbound dependency (DynamoDB) is reachable over the public internet either
+  way, and a NAT gateway's cost/complexity bought nothing for this sprint — a VPC
+  endpoint for DynamoDB is listed as a future idea in `DAILY_REPORT.md` instead.
+- `spring-boot-starter-actuator` was added (previously no Spring Security/Actuator
+  dependency existed) specifically so the ALB target group would have a real endpoint
+  to health-check, rather than repurposing an existing admin/data-plane endpoint for
+  it; `management.endpoints.web.exposure.include: health` keeps every other actuator
+  endpoint (env, beans, etc.) off, and `HealthEndpointTest` pins that it needs neither
+  an API key nor an `X-Role` header.
 
-Start Phase 5 — infrastructure and final polish, the last session:
-1. Terraform (`terraform/`): an ECS Fargate service running `toggleboard-api`'s
-   container, the four DynamoDB tables (flags/environments/segments/audit — match
-   `DynamoDbTableInitializer`'s schema so Terraform-provisioned tables are compatible,
-   or just let the app's own initializer create them and have Terraform own the table
-   *resources* either way — decide which on arrival), an ALB in front of ECS, and
-   CloudFront serving `toggleboard-console`'s built static files (`ng build`'s
-   `dist/toggleboard-console/`) from an S3 origin. **No real AWS account exists here —
-   only dummy credentials.** Validate with `terraform fmt`, `terraform validate`, and
-   either `terraform plan` against a mocked/local backend or `terraform test` with
-   `mock_provider` — never `terraform apply`/`destroy` against anything real.
-2. Full test suite green end-to-end: `mvn test` (api + sdk) and the console's
-   `npm test -- --watch=false --browsers=ChromeHeadless`, both run fresh at the end of
-   the session, not just carried over from this session's run.
-3. README finalized — check every section still matches reality (phase statuses, test
-   counts, the architecture tree, the Terraform section once it exists).
-4. Write `DAILY_REPORT.md`: what was built across all 5 sessions, final test results,
-   known limitations (no real auth/identity, RBAC and the API key are both
-   self-declared placeholders, Terraform is validated but never applied against a real
-   account), and future ideas.
-5. Flip `STATUS` below to `COMPLETE` only once all of the above is actually true.
+## Where things stand
 
-No known blockers carried over from Session 4 — the console, its 38 tests, and the
-CORS config are all done and verified against the real running API (not just unit
-tests: a manual smoke test seeded two environments, two segments, three flags and a
-kill-switch flip, then screenshotted all six distinct views). Chromium (for both the
-console's Karma tests and the Playwright screenshot capture) is already installed on
-this machine at `~/Library/Caches/ms-playwright/` from this session — Phase 5 doesn't
-need to reinstall it unless that cache was cleared.
+All 5 phases are complete. `mvn test` (152 `toggleboard-api` + 6
+`toggleboard-client-sdk` tests), `toggleboard-console`'s
+`npm test -- --watch=false --browsers=ChromeHeadless` (38 tests), and `terraform test`
+(8 assertions against `mock_provider`) were all re-run fresh at the end of Session 5
+and are green. See [DAILY_REPORT.md](DAILY_REPORT.md) for the full summary — what was
+built each session, final test results, known limitations, and future ideas — and the
+README's Preview section for 26 screenshots covering the API, the SDK demo, the
+console, and the Terraform validation/test runs.
 
-STATUS: IN_PROGRESS
+STATUS: COMPLETE
