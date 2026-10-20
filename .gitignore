@@ -1,0 +1,15 @@
+target/
+*.class
+.idea/
+*.iml
+.vscode/
+.DS_Store
+node_modules/
+dist/
+.angular/
+*.log
+.env
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
