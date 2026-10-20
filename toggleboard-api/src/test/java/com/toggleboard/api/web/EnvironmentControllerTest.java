@@ -29,10 +29,37 @@ class EnvironmentControllerTest {
         String key = uniqueKey();
         String body = objectMapper.writeValueAsString(new CreateRequest(key, "Production"));
 
-        mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(body))
+        mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(body)
+                        .header("X-Role", "admin"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.key").value(key))
                 .andExpect(jsonPath("$.apiKey").isNotEmpty());
+    }
+
+    @Test
+    void creatingAnEnvironmentWithoutARoleHeaderIsUnauthorized() throws Exception {
+        String body = objectMapper.writeValueAsString(new CreateRequest(uniqueKey(), "Production"));
+
+        mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(body))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void creatingAnEnvironmentAsViewerIsForbidden() throws Exception {
+        String body = objectMapper.writeValueAsString(new CreateRequest(uniqueKey(), "Production"));
+
+        mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(body)
+                        .header("X-Role", "viewer"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void anUnknownRoleValueIsRejected() throws Exception {
+        String body = objectMapper.writeValueAsString(new CreateRequest(uniqueKey(), "Production"));
+
+        mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(body)
+                        .header("X-Role", "superuser"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -40,9 +67,11 @@ class EnvironmentControllerTest {
         String key = uniqueKey();
         String body = objectMapper.writeValueAsString(new CreateRequest(key, "Production"));
 
-        mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(body))
+        mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(body)
+                        .header("X-Role", "admin"))
                 .andExpect(status().isCreated());
-        mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(body))
+        mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(body)
+                        .header("X-Role", "admin"))
                 .andExpect(status().isConflict());
     }
 
@@ -50,7 +79,8 @@ class EnvironmentControllerTest {
     void rejectsBlankEnvironmentName() throws Exception {
         String body = objectMapper.writeValueAsString(new CreateRequest(uniqueKey(), ""));
 
-        mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(body))
+        mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(body)
+                        .header("X-Role", "admin"))
                 .andExpect(status().isBadRequest());
     }
 
@@ -64,7 +94,8 @@ class EnvironmentControllerTest {
     void listIncludesCreatedEnvironments() throws Exception {
         String key = uniqueKey();
         String body = objectMapper.writeValueAsString(new CreateRequest(key, "Staging"));
-        mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(body))
+        mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(body)
+                        .header("X-Role", "admin"))
                 .andExpect(status().isCreated());
 
         mockMvc.perform(get("/api/v1/environments"))

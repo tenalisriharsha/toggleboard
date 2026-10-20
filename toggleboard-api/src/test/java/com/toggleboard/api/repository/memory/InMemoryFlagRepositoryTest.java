@@ -65,6 +65,7 @@ class InMemoryFlagRepositoryTest {
 
     private Flag newFlag(String id, String environmentKey, String key) {
         Instant now = Instant.now();
-        return new Flag(id, key, environmentKey, key, "desc", FlagType.BOOLEAN, true, 50, List.of(), null, now, now);
+        return new Flag(id, key, environmentKey, key, "desc", FlagType.BOOLEAN, true, 50,
+                List.of(), null, List.of(), List.of(), now, now);
     }
 }
