@@ -42,8 +42,8 @@ public class RoleAuthFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         String path = RequestPaths.resolve(request);
-        boolean isAdminPath = pathMatcher.match(PROTECTED_PATTERN, path)
-                && !pathMatcher.match(EvaluationPaths.PATTERN, path);
+        boolean isDataPlanePath = DataPlanePaths.ALL.stream().anyMatch(pattern -> pathMatcher.match(pattern, path));
+        boolean isAdminPath = pathMatcher.match(PROTECTED_PATTERN, path) && !isDataPlanePath;
 
         if (!isAdminPath || SAFE_METHODS.contains(request.getMethod())) {
             filterChain.doFilter(request, response);

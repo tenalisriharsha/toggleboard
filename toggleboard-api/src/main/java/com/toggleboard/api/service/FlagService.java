@@ -13,6 +13,9 @@ import com.toggleboard.api.exception.ConflictException;
 import com.toggleboard.api.exception.InvalidFlagException;
 import com.toggleboard.api.exception.NotFoundException;
 import com.toggleboard.api.repository.FlagRepository;
+import com.toggleboard.api.streaming.FlagChangeAction;
+import com.toggleboard.api.streaming.FlagChangeEvent;
+import com.toggleboard.api.streaming.FlagChangePublisher;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -28,14 +31,17 @@ public class FlagService {
     private final SegmentService segmentService;
     private final FlagEvaluator flagEvaluator;
     private final AuditService auditService;
+    private final FlagChangePublisher flagChangePublisher;
 
     public FlagService(FlagRepository flagRepository, EnvironmentService environmentService,
-                        SegmentService segmentService, FlagEvaluator flagEvaluator, AuditService auditService) {
+                        SegmentService segmentService, FlagEvaluator flagEvaluator, AuditService auditService,
+                        FlagChangePublisher flagChangePublisher) {
         this.flagRepository = flagRepository;
         this.environmentService = environmentService;
         this.segmentService = segmentService;
         this.flagEvaluator = flagEvaluator;
         this.auditService = auditService;
+        this.flagChangePublisher = flagChangePublisher;
     }
 
     public Flag create(String environmentKey, String key, String name, String description, FlagType type,
@@ -55,6 +61,7 @@ public class FlagService {
                 enabled, rolloutPercentage, variants, defaultVariantKey, rules, segments, now, now);
         flagRepository.save(flag);
         auditService.recordCreate(environmentKey, AuditEntityType.FLAG, key, actor, flag);
+        flagChangePublisher.publish(new FlagChangeEvent(environmentKey, key, FlagChangeAction.CREATED, flag, flag.updatedAt()));
         return flag;
     }
 
@@ -76,6 +83,7 @@ public class FlagService {
         } else {
             auditService.recordUpdate(environmentKey, AuditEntityType.FLAG, key, actor, existing, updated);
         }
+        flagChangePublisher.publish(new FlagChangeEvent(environmentKey, key, FlagChangeAction.UPDATED, updated, updated.updatedAt()));
         return updated;
     }
 
@@ -93,6 +101,7 @@ public class FlagService {
         Flag existing = getByKey(environmentKey, key);
         flagRepository.deleteById(existing.id());
         auditService.recordDelete(environmentKey, AuditEntityType.FLAG, key, actor, existing);
+        flagChangePublisher.publish(new FlagChangeEvent(environmentKey, key, FlagChangeAction.DELETED, existing, Instant.now()));
     }
 
     public EvaluationResult evaluate(String environmentKey, String key, String subjectKey, Map<String, String> attributes) {
