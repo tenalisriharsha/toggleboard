@@ -1,0 +1,62 @@
+<div class="page">
+  <h1>Environments</h1>
+  <p class="subtitle">
+    Isolated deployment targets, each with its own API key for the client SDK's evaluation and streaming endpoints.
+  </p>
+
+  <div class="card create-card">
+    <h2>New environment</h2>
+    <div class="create-form">
+      <div class="field">
+        <label>Key</label>
+        <input type="text" placeholder="e.g. production" [value]="newKey" (input)="newKey = $any($event.target).value" />
+      </div>
+      <div class="field">
+        <label>Name</label>
+        <input type="text" placeholder="e.g. Production" [value]="newName" (input)="newName = $any($event.target).value" />
+      </div>
+      <button class="primary" [disabled]="creating" (click)="create()">Create</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>All environments</h2>
+    @if (context.environments().length === 0) {
+      <p class="empty">No environments yet. Create one above to get started.</p>
+    } @else {
+      <table>
+        <thead>
+          <tr>
+            <th>Key</th>
+            <th>Name</th>
+            <th>API key</th>
+            <th>Created</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (env of context.environments(); track env.key) {
+            <tr [class.current]="env.key === context.currentEnvironmentKey()">
+              <td class="mono">{{ env.key }}</td>
+              <td>{{ env.name }}</td>
+              <td class="mono apikey-cell">
+                <span>{{ env.apiKey }}</span>
+                <button type="button" (click)="copyApiKey(env.apiKey)">
+                  {{ copiedKey === env.apiKey ? 'Copied!' : 'Copy' }}
+                </button>
+              </td>
+              <td>{{ env.createdAt | date: 'medium' }}</td>
+              <td>
+                @if (env.key === context.currentEnvironmentKey()) {
+                  <span class="badge on">current</span>
+                } @else {
+                  <button type="button" (click)="selectAsCurrent(env.key)">Use this</button>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </div>
+</div>

@@ -1,0 +1,54 @@
+<div class="rules-editor">
+  @if (rows.length === 0) {
+    <p class="empty">No targeting rules — every subject falls through to the segments and rollout below.</p>
+  }
+
+  @for (row of rows; track $index) {
+    <div class="rule-row">
+      <div class="field">
+        <label>Attribute</label>
+        <input
+          type="text"
+          placeholder="e.g. plan"
+          [value]="row.attribute"
+          (change)="updateRow($index, { attribute: $any($event.target).value })"
+        />
+      </div>
+
+      <div class="field operator">
+        <label>Operator</label>
+        <select [value]="row.operator" (change)="updateRow($index, { operator: $any($event.target).value })">
+          @for (op of operators; track op) {
+            <option [value]="op">{{ op }}</option>
+          }
+        </select>
+      </div>
+
+      <div class="field values">
+        <label>Values (comma-separated)</label>
+        <input
+          type="text"
+          placeholder="e.g. pro, enterprise"
+          [value]="row.valuesText"
+          (change)="updateRow($index, { valuesText: $any($event.target).value })"
+        />
+      </div>
+
+      @if (allowOverride) {
+        <div class="field override">
+          <label>Override variant</label>
+          <select [value]="row.overrideVariantKey" (change)="updateRow($index, { overrideVariantKey: $any($event.target).value })">
+            <option value="">(none)</option>
+            @for (key of availableVariantKeys; track key) {
+              <option [value]="key">{{ key }}</option>
+            }
+          </select>
+        </div>
+      }
+
+      <button type="button" class="remove" title="Remove rule" (click)="removeRule($index)">&times;</button>
+    </div>
+  }
+
+  <button type="button" (click)="addRule()">+ Add rule</button>
+</div>

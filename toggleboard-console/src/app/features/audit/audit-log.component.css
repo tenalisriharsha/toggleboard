@@ -1,0 +1,67 @@
+h1 {
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  color: var(--text-dim);
+  margin: 0 0 20px;
+}
+
+.filters {
+  display: flex;
+  gap: 14px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field input {
+  width: 90px;
+}
+
+.empty {
+  color: var(--text-dim);
+}
+
+.details-row td {
+  background: var(--surface-raised);
+  padding: 0;
+}
+
+.details {
+  display: flex;
+  gap: 16px;
+  padding: 14px;
+  flex-wrap: wrap;
+}
+
+.snapshot {
+  flex: 1;
+  min-width: 260px;
+}
+
+.snapshot h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.snapshot pre {
+  margin: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  font-size: 12px;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

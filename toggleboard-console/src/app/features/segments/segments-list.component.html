@@ -1,0 +1,51 @@
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>Segments</h1>
+      <p class="subtitle">
+        @if (environmentKey) {
+          Reusable named groups of targeting rules in <code class="mono">{{ environmentKey }}</code>, referenced by flags.
+        } @else {
+          Select or create an environment to see its segments.
+        }
+      </p>
+    </div>
+    @if (environmentKey) {
+      <a routerLink="/segments/new"><button class="primary">+ New segment</button></a>
+    }
+  </div>
+
+  @if (environmentKey) {
+    <div class="card">
+      @if (loading) {
+        <p class="empty">Loading…</p>
+      } @else if (segments.length === 0) {
+        <p class="empty">No segments yet in this environment.</p>
+      } @else {
+        <table>
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Name</th>
+              <th>Rules</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (segment of segments; track segment.key) {
+              <tr>
+                <td class="mono"><a [routerLink]="['/segments', segment.key]">{{ segment.key }}</a></td>
+                <td>{{ segment.name }}</td>
+                <td>{{ segment.rules.length }}</td>
+                <td class="row-actions">
+                  <a [routerLink]="['/segments', segment.key]">Edit</a>
+                  <button type="button" class="danger" (click)="deleteSegment(segment)">Delete</button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </div>
+  }
+</div>

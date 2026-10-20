@@ -1,0 +1,45 @@
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 24px;
+}
+
+.page-header h1 {
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  color: var(--text-dim);
+  margin: 0;
+}
+
+.primary-link {
+  text-decoration: none;
+}
+
+.empty {
+  color: var(--text-dim);
+}
+
+.row-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.kill-switch {
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-color: var(--danger);
+  color: var(--danger);
+  background: rgba(239, 91, 91, 0.1);
+}
+
+.kill-switch.on {
+  border-color: var(--success);
+  color: var(--success);
+  background: rgba(62, 207, 142, 0.12);
+}

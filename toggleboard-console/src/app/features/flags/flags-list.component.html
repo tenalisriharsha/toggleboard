@@ -1,0 +1,69 @@
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>Flags</h1>
+      <p class="subtitle">
+        @if (environmentKey) {
+          Boolean and multivariate feature flags in <code class="mono">{{ environmentKey }}</code>.
+        } @else {
+          Select or create an environment to see its flags.
+        }
+      </p>
+    </div>
+    @if (environmentKey) {
+      <a routerLink="/flags/new" class="primary-link">
+        <button class="primary">+ New flag</button>
+      </a>
+    }
+  </div>
+
+  @if (environmentKey) {
+    <div class="card">
+      @if (loading) {
+        <p class="empty">Loading…</p>
+      } @else if (flags.length === 0) {
+        <p class="empty">No flags yet in this environment.</p>
+      } @else {
+        <table>
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Name</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th>Rollout</th>
+              <th>Segments</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (flag of flags; track flag.key) {
+              <tr>
+                <td class="mono"><a [routerLink]="['/flags', flag.key]">{{ flag.key }}</a></td>
+                <td>{{ flag.name }}</td>
+                <td><span class="badge neutral">{{ flag.type }}</span></td>
+                <td>
+                  <button
+                    type="button"
+                    class="kill-switch"
+                    [class.on]="flag.enabled"
+                    [disabled]="togglingKey === flag.key"
+                    (click)="toggleKillSwitch(flag)"
+                  >
+                    {{ flag.enabled ? 'Enabled' : 'Disabled' }}
+                  </button>
+                </td>
+                <td>{{ flag.rolloutPercentage }}%</td>
+                <td>{{ flag.segmentKeys.length }}</td>
+                <td class="row-actions">
+                  <a [routerLink]="['/flags', flag.key]">Edit</a>
+                  <button type="button" class="danger" (click)="deleteFlag(flag)">Delete</button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </div>
+  }
+</div>

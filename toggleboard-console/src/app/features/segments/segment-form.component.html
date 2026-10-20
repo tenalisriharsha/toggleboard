@@ -1,0 +1,43 @@
+<div class="page">
+  <div class="page-header">
+    <h1>{{ mode === 'create' ? 'New segment' : 'Edit segment' }}</h1>
+    <a routerLink="/segments">&larr; Back to segments</a>
+  </div>
+
+  @if (loading) {
+    <p class="empty">Loading…</p>
+  } @else {
+    <div class="card">
+      <div class="form-grid">
+        <div class="field">
+          <label>Key</label>
+          @if (mode === 'create') {
+            <input type="text" placeholder="e.g. beta-testers" [value]="segmentKey" (input)="segmentKey = $any($event.target).value" />
+          } @else {
+            <input type="text" class="mono" [value]="segmentKey" disabled />
+          }
+        </div>
+
+        <div class="field">
+          <label>Name</label>
+          <input type="text" [value]="name" (input)="name = $any($event.target).value" />
+        </div>
+
+        <div class="field full">
+          <label>Description</label>
+          <textarea rows="2" [value]="description" (input)="description = $any($event.target).value"></textarea>
+        </div>
+      </div>
+
+      <div class="section">
+        <label>Rules (all must match — ANDed together)</label>
+        <app-targeting-rules-editor [rules]="rules" (rulesChange)="onRulesChange($event)"></app-targeting-rules-editor>
+      </div>
+
+      <div class="actions">
+        <button class="primary" [disabled]="saving" (click)="save()">{{ saving ? 'Saving…' : 'Save' }}</button>
+        <a routerLink="/segments"><button type="button">Cancel</button></a>
+      </div>
+    </div>
+  }
+</div>

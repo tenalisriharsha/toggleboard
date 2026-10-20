@@ -1,0 +1,51 @@
+<div class="shell">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">⚑</span>
+      <span class="brand-name">toggleboard</span>
+    </div>
+
+    <nav class="nav">
+      <a routerLink="/flags" routerLinkActive="active">Flags</a>
+      <a routerLink="/segments" routerLinkActive="active">Segments</a>
+      <a routerLink="/audit" routerLinkActive="active">Audit Log</a>
+      <a routerLink="/environments" routerLinkActive="active">Environments</a>
+    </nav>
+
+    <div class="context-controls">
+      @if (context.environments().length > 0) {
+        <select
+          class="env-select"
+          [value]="context.currentEnvironmentKey()"
+          (change)="onEnvironmentChange($any($event.target).value)"
+        >
+          @for (env of context.environments(); track env.key) {
+            <option [value]="env.key">{{ env.name }} ({{ env.key }})</option>
+          }
+        </select>
+      } @else {
+        <a routerLink="/environments" class="no-env">No environments — create one</a>
+      }
+
+      <input
+        class="actor-input mono"
+        title="Actor name sent as X-Actor on every change, shown in the audit log"
+        [value]="context.actor()"
+        (change)="onActorChange($any($event.target).value)"
+      />
+    </div>
+  </header>
+
+  <div class="notices">
+    @for (notice of notifications.notices(); track notice.id) {
+      <div class="notice" [class.error]="notice.kind === 'error'" [class.success]="notice.kind === 'success'">
+        <span>{{ notice.message }}</span>
+        <button (click)="notifications.dismiss(notice.id)">&times;</button>
+      </div>
+    }
+  </div>
+
+  <main class="content">
+    <router-outlet></router-outlet>
+  </main>
+</div>

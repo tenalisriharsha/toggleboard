@@ -1,0 +1,93 @@
+<div class="page">
+  <h1>Audit Log</h1>
+  <p class="subtitle">
+    @if (environmentKey) {
+      Every create, update, delete and kill-switch flip in <code class="mono">{{ environmentKey }}</code>, newest first.
+    } @else {
+      Select or create an environment to see its audit log.
+    }
+  </p>
+
+  @if (environmentKey) {
+    <div class="filters">
+      <div class="field">
+        <label>Entity type</label>
+        <select [value]="entityType" (change)="onEntityTypeChange($any($event.target).value)">
+          <option value="">All</option>
+          <option value="FLAG">Flag</option>
+          <option value="SEGMENT">Segment</option>
+          <option value="ENVIRONMENT">Environment</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Limit</label>
+        <input type="number" min="1" [value]="limit" (change)="onLimitChange(+$any($event.target).value)" />
+      </div>
+      <button type="button" (click)="reload()">Refresh</button>
+    </div>
+
+    <div class="card">
+      @if (loading) {
+        <p class="empty">Loading…</p>
+      } @else if (entries.length === 0) {
+        <p class="empty">No audit entries yet.</p>
+      } @else {
+        <table>
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Entity</th>
+              <th>Action</th>
+              <th>Actor</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (entry of entries; track entry.id) {
+              <tr>
+                <td>{{ entry.timestamp | date: 'medium' }}</td>
+                <td><span class="badge neutral">{{ entry.entityType }}</span> <span class="mono">{{ entry.entityKey }}</span></td>
+                <td>
+                  <span
+                    class="badge"
+                    [class.on]="entry.action === 'CREATE' || entry.action === 'KILL_SWITCH_ENABLED'"
+                    [class.off]="entry.action === 'DELETE' || entry.action === 'KILL_SWITCH_DISABLED'"
+                    [class.neutral]="entry.action === 'UPDATE'"
+                  >
+                    {{ entry.action }}
+                  </span>
+                </td>
+                <td>{{ entry.actor || '—' }}</td>
+                <td>
+                  <button type="button" (click)="toggleExpanded(entry.id)">
+                    {{ expandedId === entry.id ? 'Hide' : 'Details' }}
+                  </button>
+                </td>
+              </tr>
+              @if (expandedId === entry.id) {
+                <tr class="details-row">
+                  <td colspan="5">
+                    <div class="details">
+                      @if (entry.before) {
+                        <div class="snapshot">
+                          <h3>Before</h3>
+                          <pre class="mono">{{ prettyJson(entry.before) }}</pre>
+                        </div>
+                      }
+                      @if (entry.after) {
+                        <div class="snapshot">
+                          <h3>After</h3>
+                          <pre class="mono">{{ prettyJson(entry.after) }}</pre>
+                        </div>
+                      }
+                    </div>
+                  </td>
+                </tr>
+              }
+            }
+          </tbody>
+        </table>
+      }
+    </div>
+  }
+</div>
