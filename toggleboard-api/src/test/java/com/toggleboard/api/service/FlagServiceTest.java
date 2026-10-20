@@ -18,8 +18,13 @@ import com.toggleboard.api.repository.memory.InMemoryAuditRepository;
 import com.toggleboard.api.repository.memory.InMemoryEnvironmentRepository;
 import com.toggleboard.api.repository.memory.InMemoryFlagRepository;
 import com.toggleboard.api.repository.memory.InMemorySegmentRepository;
+import com.toggleboard.api.streaming.FlagChangeAction;
+import com.toggleboard.api.streaming.FlagChangeEvent;
+import com.toggleboard.api.streaming.FlagChangePublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
 
 import java.util.List;
 import java.util.Map;
@@ -33,6 +38,7 @@ class FlagServiceTest {
     private EnvironmentService environmentService;
     private SegmentService segmentService;
     private AuditService auditService;
+    private FlagChangePublisher flagChangePublisher;
 
     @BeforeEach
     void setUp() {
@@ -40,8 +46,9 @@ class FlagServiceTest {
         environmentService = new EnvironmentService(new InMemoryEnvironmentRepository(), auditService);
         environmentService.create("production", "Production", "alice");
         segmentService = new SegmentService(new InMemorySegmentRepository(), environmentService, auditService);
+        flagChangePublisher = new FlagChangePublisher();
         flagService = new FlagService(new InMemoryFlagRepository(), environmentService, segmentService,
-                new FlagEvaluator(new StableHashRolloutEngine()), auditService);
+                new FlagEvaluator(new StableHashRolloutEngine()), auditService, flagChangePublisher);
     }
 
     @Test
@@ -210,5 +217,56 @@ class FlagServiceTest {
                 List.of(), null, List.of(), List.of(), "alice");
 
         assertThat(flagService.listByEnvironment("production")).extracting(Flag::key).containsExactly("flag-a");
+    }
+
+    @Test
+    void createPublishesAFlagChangeEventWithTheNewSnapshot() {
+        FlagChangePublisher mockPublisher = Mockito.mock(FlagChangePublisher.class);
+        FlagService service = new FlagService(new InMemoryFlagRepository(), environmentService, segmentService,
+                new FlagEvaluator(new StableHashRolloutEngine()), auditService, mockPublisher);
+        ArgumentCaptor<FlagChangeEvent> captor = ArgumentCaptor.forClass(FlagChangeEvent.class);
+
+        Flag flag = service.create("production", "new-nav", "New Nav", "desc", FlagType.BOOLEAN,
+                true, 25, List.of(), null, List.of(), List.of(), "alice");
+
+        Mockito.verify(mockPublisher).publish(captor.capture());
+        assertThat(captor.getValue().action()).isEqualTo(FlagChangeAction.CREATED);
+        assertThat(captor.getValue().environmentKey()).isEqualTo("production");
+        assertThat(captor.getValue().flagKey()).isEqualTo("new-nav");
+        assertThat(captor.getValue().flag()).isEqualTo(flag);
+    }
+
+    @Test
+    void updatePublishesAnUpdatedFlagChangeEvent() {
+        FlagChangePublisher mockPublisher = Mockito.mock(FlagChangePublisher.class);
+        FlagService service = new FlagService(new InMemoryFlagRepository(), environmentService, segmentService,
+                new FlagEvaluator(new StableHashRolloutEngine()), auditService, mockPublisher);
+        service.create("production", "new-nav", "New Nav", "desc", FlagType.BOOLEAN,
+                true, 25, List.of(), null, List.of(), List.of(), "alice");
+        Mockito.reset(mockPublisher);
+
+        service.update("production", "new-nav", "New Nav v2", "desc", true, 50,
+                List.of(), null, List.of(), List.of(), "alice");
+
+        ArgumentCaptor<FlagChangeEvent> captor = ArgumentCaptor.forClass(FlagChangeEvent.class);
+        Mockito.verify(mockPublisher).publish(captor.capture());
+        assertThat(captor.getValue().action()).isEqualTo(FlagChangeAction.UPDATED);
+    }
+
+    @Test
+    void deletePublishesADeletedFlagChangeEvent() {
+        FlagChangePublisher mockPublisher = Mockito.mock(FlagChangePublisher.class);
+        FlagService service = new FlagService(new InMemoryFlagRepository(), environmentService, segmentService,
+                new FlagEvaluator(new StableHashRolloutEngine()), auditService, mockPublisher);
+        service.create("production", "new-nav", "New Nav", "desc", FlagType.BOOLEAN, true, 0,
+                List.of(), null, List.of(), List.of(), "alice");
+        Mockito.reset(mockPublisher);
+
+        service.delete("production", "new-nav", "alice");
+
+        ArgumentCaptor<FlagChangeEvent> captor = ArgumentCaptor.forClass(FlagChangeEvent.class);
+        Mockito.verify(mockPublisher).publish(captor.capture());
+        assertThat(captor.getValue().action()).isEqualTo(FlagChangeAction.DELETED);
+        assertThat(captor.getValue().flagKey()).isEqualTo("new-nav");
     }
 }
