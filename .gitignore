@@ -13,3 +13,4 @@ dist/
 *.tfstate
 *.tfstate.*
 .terraform.lock.hcl
+dynamodb-local-metadata.json
