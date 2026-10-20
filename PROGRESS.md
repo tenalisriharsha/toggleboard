@@ -109,12 +109,50 @@ toggleboard/
   a standalone spike before committing to this approach over a plain in-memory
   repository for the "DynamoDB" layer.
 
-### Phase 3 — Client SDK & Performance (Session 3)
-- [ ] `toggleboard-client-sdk`: Java client with local in-memory cache
-- [ ] Server-Sent Events (SSE) endpoint for streaming flag updates to subscribers
-- [ ] Client SDK polling fallback + SSE subscription with automatic reconnect
-- [ ] Evaluation-latency benchmark (JMH or hand-rolled) measuring p50/p99
-- [ ] Load test (e.g. Gatling or a simple concurrent harness) against the evaluation endpoint
+### Phase 3 — Client SDK & Performance (Session 3) ✅ DONE
+- [x] `toggleboard-client-sdk`: new Maven module, sibling to `toggleboard-api`, depending
+      on nothing but Jackson (JSON) and the JDK's own `java.net.http.HttpClient` — no
+      dependency on `toggleboard-api`'s classes, so it's genuinely standalone
+- [x] `ToggleboardClient`: `evaluate(flagKey, subjectKey[, attributes])` hits the REST
+      endpoint and caches the result per flag/subject pair; on failure, falls back to
+      the last cached value (throws `ToggleboardClientException` only if there's no
+      cached value at all)
+- [x] Background poller (`ScheduledExecutorService`, configurable interval) refetches
+      every cached entry
+- [x] New SSE endpoint `GET /api/v1/environments/{environmentKey}/stream` on
+      `toggleboard-api`, guarded by the same API-key filter as `/evaluate`
+      (`DataPlanePaths`, generalized from the old single-pattern `EvaluationPaths`);
+      `FlagChangePublisher` fans a `flag-change` event out to every environment's SSE
+      subscribers; `FlagService` publishes `CREATED`/`UPDATED`/`DELETED` events on every
+      create/update/delete
+- [x] SDK's SSE subscriber: reads the stream via `HttpClient.send(..., BodyHandlers.ofLines())`
+      (non-blocking per the JDK's own semantics — returns once headers arrive, then the
+      `Stream<String>` blocks per line as data arrives), parses SSE frames by hand (no
+      extra dependency), and on each event proactively refetches every cached
+      flag/subject pair for that flag — so a push updates the cache before the next
+      `evaluate()` call, not just the next poll tick. Automatic reconnect with
+      exponential backoff (1s → 30s cap) on disconnect; polling keeps running
+      regardless as the fallback.
+- [x] `SdkDemo` (`toggleboard-client-sdk`'s `examples` package): a runnable end-to-end
+      walkthrough — create env/flag via the admin API, evaluate via the SDK, flip the
+      kill switch via the admin API, watch the push notification arrive and the cache
+      refresh itself
+- [x] Hand-rolled evaluation-latency benchmark (`EvaluationLatencyBenchmarkTest`):
+      p50/p99 for `FlagEvaluator.evaluate()` directly (50k samples, sub-microsecond)
+      and for the full REST round trip over a real randomly-ported embedded server
+      (300 samples, sub-millisecond on localhost); runs as part of `mvn test` with
+      generous (non-flaky) ceiling assertions, not just a one-off script
+- [x] Concurrent load test (`EvaluationLoadTest`): 20 threads × 50 requests against
+      `/evaluate` over a real embedded server, asserting zero failures; also part of
+      `mvn test`
+- [x] `ClientSdkIntegrationTest` in `toggleboard-api` (test-scope dependency on
+      `toggleboard-client-sdk`): proves the SDK and server actually interoperate —
+      a real HTTP evaluation round trip and a real SSE push notification, not MockMvc
+- [x] 155 tests total (149 in `toggleboard-api`, up from 131; 6 new in
+      `toggleboard-client-sdk`), all green
+- [x] README Preview section refreshed with 4 new screenshots (17 total): the SDK
+      demo's push-notification flow, the latency benchmark, the load test, and a
+      refreshed full-suite `mvn test` run
 
 ### Phase 4 — Angular Admin Console (Session 4)
 - [ ] Angular workspace scaffold (`toggleboard-console`)
@@ -131,29 +169,57 @@ toggleboard/
 - [ ] README finalized, DAILY_REPORT.md written
 - [ ] STATUS flipped to COMPLETE below
 
+**Design decisions from Session 3:**
+- `DataPlanePaths` (renamed from the old single-pattern `EvaluationPaths`) now lists
+  both `/evaluate` and `/stream`, shared by `ApiKeyAuthFilter` (guards both) and
+  `RoleAuthFilter` (excludes both from the `X-Role` requirement) — adding a third
+  data-plane path later is a one-line change to that list, not a filter rewrite.
+- `FlagChangePublisher` holds `SseEmitter`s in a `Map<environmentKey, List<SseEmitter>>`
+  and removes one on `onCompletion`/`onTimeout`/`onError` or on a failed `send()` —
+  there's no separate heartbeat/cleanup task, since a client that's gone will trip one
+  of those callbacks (or the emitter's own timeout) on its own.
+- The SDK's cache key is `(flagKey, subjectKey)`, not `(flagKey, subjectKey, attributes)`
+  — if the same subject is evaluated again with different attributes, that's a fresh
+  network call that replaces the cached entry. This is a deliberate simplification: in
+  practice the same subject's attributes don't change between calls, and tracking every
+  distinct attribute combination per subject would complicate the cache for no real
+  benefit in a sprint-scoped SDK.
+- The SDK's own tests run against a plain JDK `com.sun.net.httpserver.HttpServer`
+  instead of Spring/MockMvc, keeping `toggleboard-client-sdk`'s test classpath as
+  dependency-light as its main classpath; the one true end-to-end proof (SDK talking to
+  the *real* Spring app) lives in `toggleboard-api`'s `ClientSdkIntegrationTest`
+  instead, via a test-scope-only dependency from `toggleboard-api` on
+  `toggleboard-client-sdk` (the dependency direction is test-only and one-way — the SDK
+  module still depends on nothing).
+- `HttpClient` gained `AutoCloseable`/`shutdownNow()` in JDK 21; `ToggleboardClient`
+  uses that to abort an in-flight SSE connection immediately on `close()` rather than
+  waiting for a graceful (and here, never-arriving) end of stream.
+
 ## Where to resume (next session)
 
-Start Phase 3 — a new `toggleboard-client-sdk` Maven module:
-1. Scaffold `toggleboard-client-sdk` as a sibling Maven module (add it to the root
-   `pom.xml`'s `<modules>`), depending on nothing but a JSON library and an HTTP
-   client — it should be usable standalone, not depend on `toggleboard-api`'s classes.
-2. A `ToggleboardClient` with a local in-memory cache of evaluated/streamed flags,
-   a polling fallback (hit the existing evaluation endpoint on an interval) and an
-   SSE subscription for push updates once the SSE endpoint below exists.
-3. Add an SSE endpoint to `toggleboard-api` (e.g.
-   `/api/v1/environments/{environmentKey}/stream`) that pushes flag changes to
-   subscribers; hook it into `FlagService`'s mutating calls so a create/update/delete
-   publishes an event. Reuse the existing API-key filter pattern for auth on this path.
-4. Client SDK: automatic reconnect with backoff if the SSE connection drops, falling
-   back to polling in the meantime.
-5. Evaluation-latency benchmark (JMH or hand-rolled) measuring p50/p99 for
-   `FlagEvaluator.evaluate(...)` directly (no HTTP) and for the full REST round trip.
-6. A load test against the evaluation endpoint (Gatling, or a simple
-   `ExecutorService`-based concurrent harness if Gatling adds too much setup weight).
+Start Phase 4 — the Angular admin console (`toggleboard-console`):
+1. Scaffold an Angular workspace at `toggleboard-console/` (Angular CLI, standalone
+   components are fine — no need for NgModules). It's a separate app, not a Maven
+   module; it talks to `toggleboard-api` over HTTP the same way the client SDK does,
+   just using the admin CRUD endpoints (`X-Role: admin`) instead of the data-plane.
+2. Flags list + detail/edit view: boolean vs. multivariate, rollout percentage slider,
+   targeting rules editor, segment picker, kill switch toggle.
+3. Environments screen (create environment, show its API key) and segments management
+   (reusable targeting-rule groups).
+4. Audit log viewer: filterable by entity type, newest first (the API already supports
+   this via `GET /environments/{env}/audit?entityType=...&limit=...`).
+5. An environment switcher in the UI chrome, and a way to see/copy the current
+   environment's API key (useful for pointing the client SDK or a `curl` call at it).
+6. Wire it all to the real, running `toggleboard-api` (CORS will need enabling on the
+   API for the console's dev-server origin — check whether Spring's default same-origin
+   policy needs a `CorsConfigurationSource` bean, since there currently isn't one).
 
-No known blockers carried over from Session 2 — the DynamoDB profile, targeting/
-segments, audit log and RBAC are all done and tested. The `software.amazon.awssdk`
-BOM version is pinned at 2.57.0 in `toggleboard-api/pom.xml`; reuse that version (or
-bump deliberately) if the client SDK or anything else ends up needing AWS SDK types.
+No known blockers carried over from Session 3 — the client SDK, SSE streaming, the
+latency benchmark and the load test are all done and tested. `toggleboard-api`'s test
+suite now has a test-scope dependency on `toggleboard-client-sdk`
+(`toggleboard-api/pom.xml`); if Phase 4 adds any new cross-module test dependency, run
+`mvn install -DskipTests` at the repo root first so the reactor can resolve it (a plain
+`mvn -pl <module> test` without `-am` only works once the dependency is already
+installed locally).
 
 STATUS: IN_PROGRESS

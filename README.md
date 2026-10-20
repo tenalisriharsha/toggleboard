@@ -25,6 +25,17 @@ rollout, a full audit log of every create/update/delete/kill-switch-toggle, a
 lightweight `X-Role` RBAC layer on the admin CRUD endpoints, and 131 passing tests
 (including real round-trips against embedded DynamoDB Local — no Docker required).
 
+**Session 3 of 5 — Client SDK & performance: done.** A standalone `toggleboard-client-sdk`
+Java module (only Jackson + the JDK's own `java.net.http.HttpClient` — no dependency on
+`toggleboard-api`'s classes) that evaluates flags, caches results locally, and keeps
+them fresh via a background poller and an SSE subscription with automatic reconnect;
+a new `/stream` SSE endpoint on the server that pushes a `flag-change` event on every
+create/update/delete; a hand-rolled p50/p99 evaluation-latency benchmark (both
+in-process and full REST round trip); and a concurrent load test against the
+evaluation endpoint. 149 tests in `toggleboard-api` + 6 in `toggleboard-client-sdk`
+(155 total), including a real end-to-end integration test that runs the SDK against
+the actual running server.
+
 ## Preview
 
 **Swagger / OpenAPI docs** — every endpoint is documented and callable from the browser.
@@ -89,6 +100,28 @@ DynamoDB client instead of the in-memory repositories.
 
 ![DynamoDB profile](docs/screenshots/13-terminal-dynamodb-profile.png)
 
+**The client SDK end-to-end** — `toggleboard-client-sdk`'s `SdkDemo` creates an
+environment and flag through the admin API, evaluates the flag through the SDK, then
+watches a live SSE push notification arrive the instant an admin flips the kill
+switch — the cache refreshes itself automatically, no explicit poll needed.
+
+![Client SDK demo](docs/screenshots/14-terminal-sdk-demo.png)
+
+**Evaluation-latency benchmark** — p50/p99 for `FlagEvaluator.evaluate()` directly
+(sub-microsecond) versus the full REST round trip over localhost (sub-millisecond).
+
+![Latency benchmark](docs/screenshots/15-terminal-latency-benchmark.png)
+
+**Concurrent load test** — 20 threads firing 1,000 requests at `/evaluate` with zero
+failures.
+
+![Load test](docs/screenshots/16-terminal-load-test.png)
+
+**Full test suite** — 149 tests in `toggleboard-api` plus 6 in `toggleboard-client-sdk`
+(155 total), all green.
+
+![mvn test (full suite)](docs/screenshots/17-terminal-mvn-test-full.png)
+
 ## Architecture
 
 ```
@@ -97,10 +130,11 @@ toggleboard/
 │   ├── domain/                 Flag, Segment, TargetingRule, AuditEntry, FlagEvaluator
 │   ├── repository/             Storage interfaces + memory/ and dynamodb/ implementations
 │   ├── service/                 Business logic, validation, audit recording
-│   ├── web/                    REST controllers + DTOs
+│   ├── web/                    REST controllers + DTOs (including the SSE /stream endpoint)
+│   ├── streaming/               FlagChangePublisher: fans out flag-change events over SSE
 │   ├── security/               API-key filter (data-plane) + X-Role filter (admin CRUD)
 │   └── exception/               Centralized error handling
-├── toggleboard-client-sdk/   Java client: local cache + SSE streaming     (Phase 3)
+├── toggleboard-client-sdk/   Standalone Java client: local cache, SSE push + polling fallback
 ├── toggleboard-console/      Angular admin console                        (Phase 4)
 ├── terraform/                 ECS Fargate, DynamoDB, ALB, CloudFront       (Phase 5)
 └── docs/screenshots/         Preview images for this README
@@ -163,6 +197,10 @@ curl -s "http://localhost:8080/api/v1/environments/production/flags/new-checkout
 
 # See everything that happened in this environment, newest first
 curl -s "http://localhost:8080/api/v1/environments/production/audit"
+
+# Subscribe to live flag-change events (SSE) — same API key as evaluation
+curl -s -N "http://localhost:8080/api/v1/environments/production/stream" \
+  -H "X-API-Key: <apiKey from the create-environment response>"
 ```
 
 ### Role-based access control
@@ -173,16 +211,53 @@ header: `GET` requests need no role at all, but a mutation (`POST`/`PUT`/`DELETE
 requires `X-Role: admin` — a missing header is `401`, `X-Role: viewer` is `403`. This
 is a lightweight placeholder ahead of real identity/authorization in a later phase.
 
+## Client SDK
+
+`toggleboard-client-sdk` is a standalone Java module — it depends on nothing but
+Jackson for JSON and the JDK's own `java.net.http.HttpClient`, not on
+`toggleboard-api`'s classes, so it can be shipped and used independently of this repo.
+
+```java
+ToggleboardClient client = ToggleboardClient.create(ToggleboardClientConfig.builder()
+        .baseUrl("http://localhost:8080")
+        .environmentKey("production")
+        .apiKey(apiKey)
+        .build());
+
+EvaluationResult result = client.evaluate("new-checkout-flow", "user-482");
+// result.enabled(), result.variantKey(), result.value(), result.reason()
+
+client.onFlagChange(notification ->
+        System.out.println("flag changed: " + notification.flagKey() + " " + notification.action()));
+
+client.close(); // or use it in a try-with-resources block
+```
+
+Every `evaluate()` call hits the REST endpoint directly and caches the result; if that
+call fails, the last cached value for the same flag/subject pair is served instead
+(an exception is only thrown if there is no cached value at all). A background poller
+periodically refreshes every cached entry, and — unless `streamingEnabled(false)` is
+set — an SSE subscription to the server's `/stream` endpoint proactively refreshes a
+flag's cached entries the moment the server reports a change, with automatic
+reconnect and exponential backoff if the connection drops. See
+`toggleboard-client-sdk`'s `SdkDemo` (`src/main/java/com/toggleboard/sdk/examples/`)
+for a complete runnable walkthrough, and the screenshot above for its output.
+
 ## Testing
 
 ```bash
 mvn test
 ```
 
-131 tests: stable-hash rollout determinism and distribution, flag evaluation (kill
-switch, targeting rules, segment matching, boolean rollout, multivariate variant
-selection and overrides), repository CRUD for every entity against **both** the
-in-memory and the DynamoDB-backed implementations (via embedded DynamoDB Local — no
-Docker), service-layer validation and audit recording, and MockMvc integration tests
-for every REST endpoint, including the API-key filter's and the `X-Role` filter's
-401/403 paths.
+149 tests in `toggleboard-api` + 6 in `toggleboard-client-sdk` (155 total):
+stable-hash rollout determinism and distribution, flag evaluation (kill switch,
+targeting rules, segment matching, boolean rollout, multivariate variant selection
+and overrides), repository CRUD for every entity against **both** the in-memory and
+the DynamoDB-backed implementations (via embedded DynamoDB Local — no Docker),
+service-layer validation and audit recording, MockMvc integration tests for every
+REST endpoint (including the API-key filter's and the `X-Role` filter's 401/403
+paths and the SSE stream's async lifecycle), the client SDK's own tests against an
+in-process JDK `HttpServer` (evaluation, caching/fallback, polling, SSE push and
+reconnect — no Spring context needed), an end-to-end integration test that runs the
+SDK against the real running server, and a hand-rolled evaluation-latency benchmark
+and concurrent load test (see the screenshots above for sample numbers).
