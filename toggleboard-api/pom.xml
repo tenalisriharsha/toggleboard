@@ -19,6 +19,8 @@
   <properties>
     <spring-boot.version>3.3.4</spring-boot.version>
     <springdoc.version>2.6.0</springdoc.version>
+    <awssdk.version>2.57.0</awssdk.version>
+    <dynamodb-local.version>2.6.1</dynamodb-local.version>
   </properties>
 
   <dependencyManagement>
@@ -27,6 +29,13 @@
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-dependencies</artifactId>
         <version>${spring-boot.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>software.amazon.awssdk</groupId>
+        <artifactId>bom</artifactId>
+        <version>${awssdk.version}</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -47,11 +56,43 @@
       <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
       <version>${springdoc.version}</version>
     </dependency>
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>dynamodb</artifactId>
+      <exclusions>
+        <!-- apache5-client 2.57.0 requires httpclient5 5.4+ (TlsSocketStrategy) but the
+             BOM only resolves 5.3.1, which breaks SPI client discovery at runtime.
+             url-connection-client below is lighter-weight and sufficient here anyway. -->
+        <exclusion>
+          <groupId>software.amazon.awssdk</groupId>
+          <artifactId>apache5-client</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>url-connection-client</artifactId>
+    </dependency>
 
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.amazonaws</groupId>
+      <artifactId>DynamoDBLocal</artifactId>
+      <version>${dynamodb-local.version}</version>
+      <scope>test</scope>
+      <exclusions>
+        <!-- the awssdk bom import above bumps DynamoDBLocal's transitive cognitoidentity
+             to 2.57.0, whose apache5-client needs httpclient5 5.4+ while only 5.3.1
+             resolves; excluded everywhere so SPI falls back to url-connection-client. -->
+        <exclusion>
+          <groupId>software.amazon.awssdk</groupId>
+          <artifactId>apache5-client</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
   </dependencies>
 
