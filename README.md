@@ -9,8 +9,10 @@ all on AWS.
 
 ## Project Status
 
-Built in public across a 5-session sprint. See [PROGRESS.md](PROGRESS.md) for the
-full architecture, phased build plan, and exactly where work resumes next session.
+Built in public across a 5-session sprint — **all 5 sessions complete.** See
+[PROGRESS.md](PROGRESS.md) for the full architecture and phased build plan, and
+[DAILY_REPORT.md](DAILY_REPORT.md) for a summary of what was built, final test
+results, known limitations, and future ideas.
 
 **Session 1 of 5 — Foundation: done.** Core domain model, stable-hash rollout engine,
 in-memory storage behind repository interfaces, the flags/environments REST API,
@@ -46,6 +48,17 @@ expandable before/after JSON diffs, and an environments screen to create environ
 and copy their API keys. A `CorsRegistry` bean on the API now allows the console's dev
 server to call it directly. 151 tests in `toggleboard-api` (new: a CORS preflight test)
 + 6 in `toggleboard-client-sdk` + 38 in `toggleboard-console` (195 total).
+
+**Session 5 of 5 — Infrastructure & final polish: done.** `terraform/` provisions
+toggleboard-api on ECS Fargate behind an ALB, the four DynamoDB tables (matching
+`DynamoDbTableInitializer`'s schema exactly), and S3 + CloudFront serving the Angular
+console's static build — validated with `terraform fmt`/`validate` and a `terraform
+test` suite (8 assertions across 4 files) against `mock_provider`, since no real AWS
+account exists in this environment. Also adds `spring-boot-starter-actuator` exposing
+only `GET /actuator/health` (no auth) for the ALB's target-group health check. 152
+tests in `toggleboard-api` (new: the health-endpoint test) + 6 in
+`toggleboard-client-sdk` + 38 in `toggleboard-console` (196 total), all green, plus the
+8 Terraform test assertions.
 
 ## Preview
 
@@ -163,6 +176,24 @@ and switch which environment the rest of the console is pointed at.
 
 ![Console environments](docs/screenshots/23-console-environments.png)
 
+**Terraform — `fmt` and `validate`** — the ECS Fargate / DynamoDB / ALB / CloudFront
+module passes both with zero formatting diffs.
+
+![terraform fmt and validate](docs/screenshots/24-terraform-fmt-validate.png)
+
+**Terraform — `terraform test`** — 8 assertions across 4 test files, run against
+`mock_provider` so no real AWS account is ever touched: DynamoDB table/GSI shapes,
+the ECS service's Fargate config and its IAM task role scoped to only the four
+toggleboard tables, the ALB's listener/health-check config, and the console's
+CloudFront distribution (private S3 behind OAC, SPA deep-link fallback).
+
+![terraform test](docs/screenshots/25-terraform-test.png)
+
+**Full test suite, final run** — 152 tests in `toggleboard-api` (up from 149: the new
+health-endpoint test) plus 6 in `toggleboard-client-sdk` (158 total), all green.
+
+![mvn test (final, Session 5)](docs/screenshots/26-terminal-mvn-test-final.png)
+
 ## Architecture
 
 ```
@@ -182,7 +213,7 @@ toggleboard/
 │       ├── core/                ApiService, EnvironmentContextService, admin-headers interceptor
 │       ├── shared/               TargetingRulesEditorComponent (flags + segments both use it)
 │       └── features/             flags/, segments/, audit/, environments/ — one route each
-├── terraform/                 ECS Fargate, DynamoDB, ALB, CloudFront       (Phase 5)
+├── terraform/                 ECS Fargate, DynamoDB, ALB, CloudFront for the console
 └── docs/screenshots/         Preview images for this README
 ```
 
@@ -313,15 +344,42 @@ reconnect and exponential backoff if the connection drops. See
 `toggleboard-client-sdk`'s `SdkDemo` (`src/main/java/com/toggleboard/sdk/examples/`)
 for a complete runnable walkthrough, and the screenshot above for its output.
 
+## Infrastructure
+
+`terraform/` provisions toggleboard on AWS: `toggleboard-api` on ECS Fargate behind
+an internet-facing ALB (target group health-checking `GET /actuator/health`), the
+four DynamoDB tables with the same names/keys/GSIs `DynamoDbTableInitializer` creates
+at runtime, and a private S3 bucket + CloudFront distribution (Origin Access Control,
+SPA deep-link fallback to `index.html`) serving `toggleboard-console`'s static build.
+The ECS task role is scoped to exactly those four tables — no `"Resource": "*"`.
+
+**No real AWS account exists in this project's environment — only dummy
+credentials.** The module is validated with `terraform fmt`/`validate` (both run
+clean, no formatting diffs) and a `terraform test` suite (`terraform/tests/*.tftest.hcl`)
+run against `mock_provider`, which exercises the full plan/apply graph without ever
+calling real AWS:
+
+```bash
+cd terraform
+terraform init
+terraform fmt -check -recursive
+terraform validate
+terraform test
+```
+
+See [terraform/README.md](terraform/README.md) for the full file-by-file breakdown
+and what each test asserts.
+
 ## Testing
 
 ```bash
 mvn test                                    # toggleboard-api + toggleboard-client-sdk
 cd toggleboard-console && npm test -- --watch=false --browsers=ChromeHeadless
+cd terraform && terraform test              # infrastructure, against mock_provider
 ```
 
-151 tests in `toggleboard-api` + 6 in `toggleboard-client-sdk` + 38 in
-`toggleboard-console` (195 total):
+152 tests in `toggleboard-api` + 6 in `toggleboard-client-sdk` + 38 in
+`toggleboard-console` (196 total), plus 8 Terraform test assertions:
 
 - **`toggleboard-api`**: stable-hash rollout determinism and distribution, flag
   evaluation (kill switch, targeting rules, segment matching, boolean rollout,
@@ -330,8 +388,9 @@ cd toggleboard-console && npm test -- --watch=false --browsers=ChromeHeadless
   DynamoDB Local — no Docker), service-layer validation and audit recording, MockMvc
   integration tests for every REST endpoint (including the API-key filter's and the
   `X-Role` filter's 401/403 paths, the SSE stream's async lifecycle, and the CORS
-  preflight the console's dev server relies on), and a hand-rolled evaluation-latency
-  benchmark and concurrent load test (see the screenshots above for sample numbers).
+  preflight the console's dev server relies on), a hand-rolled evaluation-latency
+  benchmark and concurrent load test (see the screenshots above for sample numbers),
+  and that `GET /actuator/health` is reachable with no auth for the ALB health check.
 - **`toggleboard-client-sdk`**: its own tests against an in-process JDK `HttpServer`
   (evaluation, caching/fallback, polling, SSE push and reconnect — no Spring context
   needed), plus an end-to-end integration test (in `toggleboard-api`) that runs the
@@ -342,3 +401,8 @@ cd toggleboard-console && npm test -- --watch=false --browsers=ChromeHeadless
   add/remove/value-parsing logic, each feature's form validation (e.g. a multivariate
   flag whose variant weights don't sum to 100 is rejected before the API is even
   called) and its HTTP interactions, mocked with `provideHttpClientTesting()`.
+- **`terraform`**: a `terraform test` suite (`mock_provider`, no real AWS calls) that
+  asserts the DynamoDB tables' keys/GSIs match the app's own schema, the ECS service
+  is genuinely Fargate with its task role scoped to only those four tables, the ALB's
+  listener/health-check/security-group config, and that the console's CloudFront
+  distribution is private-behind-OAC with a working SPA fallback.
