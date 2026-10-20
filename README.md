@@ -1,198 +1,87 @@
 # toggleboard
 
-A feature flag service: a Spring Boot 3 REST API backed by DynamoDB, with boolean and
-multivariate flags, percentage rollouts via stable hashing, targeting rules and
-segments, a kill switch, role-based access control, and a full audit history of every
-change. It ships a Java client SDK with local caching and streaming updates (SSE), an
-Angular admin console, per-environment API keys, OpenAPI docs, and Terraform to run it
-all on AWS.
+[![CI](https://github.com/tenalisriharsha/toggleboard/actions/workflows/ci.yml/badge.svg)](https://github.com/tenalisriharsha/toggleboard/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Java 21](https://img.shields.io/badge/java-21-orange)
 
-## Project Status
+**A feature flag service you can run yourself: turn features on for a percentage of users or for specific groups,
+switch them off instantly, and see who changed what.**
 
-Built in public across a 5-session sprint — **all 5 sessions complete.** See
-[PROGRESS.md](PROGRESS.md) for the full architecture and phased build plan, and
-[DAILY_REPORT.md](DAILY_REPORT.md) for a summary of what was built, final test
-results, known limitations, and future ideas.
+A Spring Boot 3 REST API (in-memory or DynamoDB storage), a Java client SDK with local caching and live updates, an
+Angular admin console, and Terraform to run all of it on AWS.
 
-**Session 1 of 5 — Foundation: done.** Core domain model, stable-hash rollout engine,
-in-memory storage behind repository interfaces, the flags/environments REST API,
-per-environment API key auth on the evaluation endpoint, OpenAPI docs, and 56 passing
-tests.
+- **Boolean and multivariate flags** with weighted variants
+- **Percentage rollouts** with stable hashing: the same user always gets the same answer
+- **Targeting rules and reusable segments**, evaluated ahead of the rollout
+- **Kill switch** per flag, and a **full audit log** of every change
+- **Per-environment API keys** and role-based access for the admin endpoints
+- **Live updates** over server-sent events; the SDK keeps a local cache and falls back to polling
+- **OpenAPI docs** (Swagger UI) and a **Terraform** deployment for ECS Fargate, DynamoDB and CloudFront
 
-**Session 2 of 5 — Persistence, targeting & audit: done.** A real DynamoDB-backed
-`FlagRepository`/`EnvironmentRepository`/`SegmentRepository`/`AuditRepository`
-(switchable via the `dynamodb` Spring profile, same interfaces the in-memory repos
-implement), targeting rules and reusable segments evaluated ahead of the percentage
-rollout, a full audit log of every create/update/delete/kill-switch-toggle, a
-lightweight `X-Role` RBAC layer on the admin CRUD endpoints, and 131 passing tests
-(including real round-trips against embedded DynamoDB Local — no Docker required).
+## Quick start
 
-**Session 3 of 5 — Client SDK & performance: done.** A standalone `toggleboard-client-sdk`
-Java module (only Jackson + the JDK's own `java.net.http.HttpClient` — no dependency on
-`toggleboard-api`'s classes) that evaluates flags, caches results locally, and keeps
-them fresh via a background poller and an SSE subscription with automatic reconnect;
-a new `/stream` SSE endpoint on the server that pushes a `flag-change` event on every
-create/update/delete; a hand-rolled p50/p99 evaluation-latency benchmark (both
-in-process and full REST round trip); and a concurrent load test against the
-evaluation endpoint. 149 tests in `toggleboard-api` + 6 in `toggleboard-client-sdk`
-(155 total), including a real end-to-end integration test that runs the SDK against
-the actual running server.
+You need Java 21 and Maven. No Docker and no AWS account.
 
-**Session 4 of 5 — Angular admin console: done.** A standalone `toggleboard-console`
-Angular 19 app (standalone components, no NgModules) that talks to `toggleboard-api`'s
-admin CRUD endpoints directly from the browser: a flags list with an inline kill-switch
-toggle, a create/edit form with a rollout-percentage slider, a variant editor with a
-live weight-sum check, a shared targeting-rules editor (reused for both flags and
-segments), a segment picker, a segments list and editor, an audit log viewer with
-expandable before/after JSON diffs, and an environments screen to create environments
-and copy their API keys. A `CorsRegistry` bean on the API now allows the console's dev
-server to call it directly. 151 tests in `toggleboard-api` (new: a CORS preflight test)
-+ 6 in `toggleboard-client-sdk` + 38 in `toggleboard-console` (195 total).
+```bash
+git clone https://github.com/tenalisriharsha/toggleboard.git
+cd toggleboard
+mvn -q install -DskipTests
+mvn -pl toggleboard-api spring-boot:run        # API on http://localhost:8080, Swagger UI at /swagger-ui.html
+```
 
-**Session 5 of 5 — Infrastructure & final polish: done.** `terraform/` provisions
-toggleboard-api on ECS Fargate behind an ALB, the four DynamoDB tables (matching
-`DynamoDbTableInitializer`'s schema exactly), and S3 + CloudFront serving the Angular
-console's static build — validated with `terraform fmt`/`validate` and a `terraform
-test` suite (8 assertions across 4 files) against `mock_provider`, since no real AWS
-account exists in this environment. Also adds `spring-boot-starter-actuator` exposing
-only `GET /actuator/health` (no auth) for the ALB's target-group health check. 152
-tests in `toggleboard-api` (new: the health-endpoint test) + 6 in
-`toggleboard-client-sdk` + 38 in `toggleboard-console` (196 total), all green, plus the
-8 Terraform test assertions.
+In another terminal, create an environment (the response includes its API key), a flag, and evaluate it:
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/environments \
+  -H "Content-Type: application/json" -H "X-Role: admin" \
+  -d '{"key":"production","name":"Production"}'
+
+curl -s -X POST http://localhost:8080/api/v1/environments/production/flags \
+  -H "Content-Type: application/json" -H "X-Role: admin" \
+  -d '{"key":"new-checkout-flow","name":"New Checkout Flow","type":"BOOLEAN","enabled":true,"rolloutPercentage":40}'
+
+curl -s "http://localhost:8080/api/v1/environments/production/flags/new-checkout-flow/evaluate?subjectKey=user-482" \
+  -H "X-API-Key: <apiKey from the first response>"
+```
 
 ## Preview
 
-**Swagger / OpenAPI docs** — every endpoint is documented and callable from the browser.
+Every image below is generated by [`scripts/capture`](scripts/capture), which starts the real API and console, creates
+the demo data through the API, runs the commands shown and screenshots the results. Nothing is mocked up by hand.
+
+**Swagger UI.** Every endpoint is documented and callable from the browser:
 
 ![Swagger UI overview](docs/screenshots/01-swagger-overview.png)
 
-**Evaluation endpoint detail** — the client SDK data-plane: resolve a flag for a subject.
+**Create a flag and evaluate it.** A 40% rollout with a targeting rule and a segment, then a decision for one user:
 
-![Swagger evaluate endpoint](docs/screenshots/02-swagger-evaluate-endpoint.png)
+![Create a flag](docs/screenshots/02-create-flag.png)
+![Evaluate a flag](docs/screenshots/03-evaluate.png)
 
-**Creating an environment and a flag** — environments get an auto-generated API key;
-flags are created with a rollout percentage.
+**Data-plane requests need the environment's API key.** Without it the evaluation is rejected:
 
-![Create environment and flag](docs/screenshots/03-terminal-create-env-and-flag.png)
+![Evaluation without an API key is rejected](docs/screenshots/04-evaluate-unauthorized.png)
 
-**Listing flags** — boolean, multivariate (with weighted variants), and a
-kill-switched flag, all in one environment.
+**Stable-hash rollout.** 500 different users against a 40% flag land close to 40%:
 
-![List flags](docs/screenshots/04-terminal-list-flags.png)
+![Rollout distribution](docs/screenshots/05-rollout-distribution.png)
 
-**Evaluation, API key auth, and the kill switch** — a valid key gets a decision, a
-missing key is rejected with 401, and a disabled flag always resolves to `false`
-regardless of its rollout percentage.
+**Audit log.** Every create, update, delete and kill-switch change is recorded, here read through the API:
 
-![Evaluate, auth, kill switch](docs/screenshots/05-terminal-evaluate-and-auth.png)
+![Audit log through the API](docs/screenshots/06-audit-log.png)
 
-**Stable-hash rollout in action** — 500 distinct subjects evaluated against a flag
-with `rolloutPercentage=40`; the observed rate lands within a couple points of target.
+**Admin console.** The flag list with the kill-switch state, a multivariate flag with weighted variants, the segments
+list, the audit log with actors, and the environments screen:
 
-![Rollout distribution](docs/screenshots/06-terminal-rollout-distribution.png)
+![Console: flags](docs/screenshots/07-console-flags.png)
+![Console: editing a multivariate flag](docs/screenshots/08-console-flag-edit.png)
+![Console: segments](docs/screenshots/09-console-segments.png)
+![Console: audit log](docs/screenshots/10-console-audit.png)
+![Console: environments](docs/screenshots/11-console-environments.png)
 
-**Targeting rules and segments** — a reusable segment, and a flag that targets
-`country IN [US, CA]` directly and also references that segment.
+**Infrastructure tests.** `terraform test` checks the AWS setup against a mocked provider, with no account needed:
 
-![Targeting rules and segments](docs/screenshots/08-terminal-targeting-and-segments.png)
-
-**Evaluation reasons** — the same flag resolving three different ways for three
-different subjects: a direct targeting-rule match, a segment match, and the default
-rollout fallback when neither matches.
-
-![Evaluation reasons](docs/screenshots/09-terminal-evaluate-reasons.png)
-
-**Kill switch toggle and the audit log** — disabling a flag records a
-`KILL_SWITCH_DISABLED` entry (not just a generic update) with who did it and the
-full before/after snapshot.
-
-![Kill switch and audit log](docs/screenshots/10-terminal-audit-log.png)
-
-**Role-based access control** — a mutating request with no `X-Role` header is
-rejected with 401, a `viewer` gets 403, an `admin` succeeds, and reads never require
-a role at all.
-
-![RBAC](docs/screenshots/11-terminal-rbac.png)
-
-**Full test suite** — 131 tests across the domain, repository (in-memory and
-DynamoDB), service, and web layers.
-
-![mvn test](docs/screenshots/12-terminal-mvn-test.png)
-
-**Running on the `dynamodb` profile** — the exact same API, backed by a real
-DynamoDB client instead of the in-memory repositories.
-
-![DynamoDB profile](docs/screenshots/13-terminal-dynamodb-profile.png)
-
-**The client SDK end-to-end** — `toggleboard-client-sdk`'s `SdkDemo` creates an
-environment and flag through the admin API, evaluates the flag through the SDK, then
-watches a live SSE push notification arrive the instant an admin flips the kill
-switch — the cache refreshes itself automatically, no explicit poll needed.
-
-![Client SDK demo](docs/screenshots/14-terminal-sdk-demo.png)
-
-**Evaluation-latency benchmark** — p50/p99 for `FlagEvaluator.evaluate()` directly
-(sub-microsecond) versus the full REST round trip over localhost (sub-millisecond).
-
-![Latency benchmark](docs/screenshots/15-terminal-latency-benchmark.png)
-
-**Concurrent load test** — 20 threads firing 1,000 requests at `/evaluate` with zero
-failures.
-
-![Load test](docs/screenshots/16-terminal-load-test.png)
-
-**Full test suite** — 149 tests in `toggleboard-api` plus 6 in `toggleboard-client-sdk`
-(155 total), all green.
-
-![mvn test (full suite)](docs/screenshots/17-terminal-mvn-test-full.png)
-
-**Admin console — flags list** — every flag in an environment with its type, an
-inline kill-switch toggle, rollout percentage, and how many segments it references.
-
-![Console flags list](docs/screenshots/18-console-flags-list.png)
-
-**Admin console — editing a boolean flag** — the rollout-percentage slider and the
-shared targeting-rules editor, with the flag's referenced segments checked below.
-
-![Console boolean flag editor](docs/screenshots/19-console-flag-edit-boolean.png)
-
-**Admin console — editing a multivariate flag** — the variant editor with a live
-weight-sum check (must total 100) and a default-variant picker.
-
-![Console multivariate flag editor](docs/screenshots/20-console-flag-edit-multivariate.png)
-
-**Admin console — segments** — the same reusable, named targeting-rule groups the
-API exposes, listed and ready to edit or reference from a flag.
-
-![Console segments list](docs/screenshots/21-console-segments-list.png)
-
-**Admin console — audit log** — every create, update, delete and kill-switch flip,
-with an expandable before/after JSON diff for the selected entry.
-
-![Console audit log](docs/screenshots/22-console-audit-log.png)
-
-**Admin console — environments** — create an environment, see its generated API key,
-and switch which environment the rest of the console is pointed at.
-
-![Console environments](docs/screenshots/23-console-environments.png)
-
-**Terraform — `fmt` and `validate`** — the ECS Fargate / DynamoDB / ALB / CloudFront
-module passes both with zero formatting diffs.
-
-![terraform fmt and validate](docs/screenshots/24-terraform-fmt-validate.png)
-
-**Terraform — `terraform test`** — 8 assertions across 4 test files, run against
-`mock_provider` so no real AWS account is ever touched: DynamoDB table/GSI shapes,
-the ECS service's Fargate config and its IAM task role scoped to only the four
-toggleboard tables, the ALB's listener/health-check config, and the console's
-CloudFront distribution (private S3 behind OAC, SPA deep-link fallback).
-
-![terraform test](docs/screenshots/25-terraform-test.png)
-
-**Full test suite, final run** — 152 tests in `toggleboard-api` (up from 149: the new
-health-endpoint test) plus 6 in `toggleboard-client-sdk` (158 total), all green.
-
-![mvn test (final, Session 5)](docs/screenshots/26-terminal-mvn-test-final.png)
+![terraform test output](docs/screenshots/12-terraform-test.png)
 
 ## Architecture
 
@@ -353,8 +242,7 @@ at runtime, and a private S3 bucket + CloudFront distribution (Origin Access Con
 SPA deep-link fallback to `index.html`) serving `toggleboard-console`'s static build.
 The ECS task role is scoped to exactly those four tables — no `"Resource": "*"`.
 
-**No real AWS account exists in this project's environment — only dummy
-credentials.** The module is validated with `terraform fmt`/`validate` (both run
+**The Terraform has never been applied to a real AWS account.** It is validated with `terraform fmt`/`validate` (both run
 clean, no formatting diffs) and a `terraform test` suite (`terraform/tests/*.tftest.hcl`)
 run against `mock_provider`, which exercises the full plan/apply graph without ever
 calling real AWS:
@@ -406,3 +294,15 @@ cd terraform && terraform test              # infrastructure, against mock_provi
   is genuinely Fargate with its task role scoped to only those four tables, the ALB's
   listener/health-check/security-group config, and that the console's CloudFront
   distribution is private-behind-OAC with a working SPA fallback.
+
+To regenerate the screenshots: `cd scripts/capture && npm install && npm run capture` (needs Java 21, Maven, Node,
+Terraform and `jq`).
+
+## Project status
+
+Version 0.1. The phase-by-phase build history, design decisions and known limitations are in
+[PROGRESS.md](PROGRESS.md) and [DAILY_REPORT.md](DAILY_REPORT.md).
+
+## License
+
+[MIT](LICENSE)

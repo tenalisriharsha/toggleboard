@@ -321,3 +321,56 @@ README's Preview section for 26 screenshots covering the API, the SDK demo, the
 console, and the Terraform validation/test runs.
 
 STATUS: COMPLETE
+
+## Build history
+
+Built across a 5-session sprint — **all 5 sessions complete.** See
+[PROGRESS.md](PROGRESS.md) for the full architecture and phased build plan, and
+[DAILY_REPORT.md](DAILY_REPORT.md) for a summary of what was built, final test
+results, known limitations, and future ideas.
+
+**Session 1 of 5 — Foundation: done.** Core domain model, stable-hash rollout engine,
+in-memory storage behind repository interfaces, the flags/environments REST API,
+per-environment API key auth on the evaluation endpoint, OpenAPI docs, and 56 passing
+tests.
+
+**Session 2 of 5 — Persistence, targeting & audit: done.** A real DynamoDB-backed
+`FlagRepository`/`EnvironmentRepository`/`SegmentRepository`/`AuditRepository`
+(switchable via the `dynamodb` Spring profile, same interfaces the in-memory repos
+implement), targeting rules and reusable segments evaluated ahead of the percentage
+rollout, a full audit log of every create/update/delete/kill-switch-toggle, a
+lightweight `X-Role` RBAC layer on the admin CRUD endpoints, and 131 passing tests
+(including real round-trips against embedded DynamoDB Local — no Docker required).
+
+**Session 3 of 5 — Client SDK & performance: done.** A standalone `toggleboard-client-sdk`
+Java module (only Jackson + the JDK's own `java.net.http.HttpClient` — no dependency on
+`toggleboard-api`'s classes) that evaluates flags, caches results locally, and keeps
+them fresh via a background poller and an SSE subscription with automatic reconnect;
+a new `/stream` SSE endpoint on the server that pushes a `flag-change` event on every
+create/update/delete; a hand-rolled p50/p99 evaluation-latency benchmark (both
+in-process and full REST round trip); and a concurrent load test against the
+evaluation endpoint. 149 tests in `toggleboard-api` + 6 in `toggleboard-client-sdk`
+(155 total), including a real end-to-end integration test that runs the SDK against
+the actual running server.
+
+**Session 4 of 5 — Angular admin console: done.** A standalone `toggleboard-console`
+Angular 19 app (standalone components, no NgModules) that talks to `toggleboard-api`'s
+admin CRUD endpoints directly from the browser: a flags list with an inline kill-switch
+toggle, a create/edit form with a rollout-percentage slider, a variant editor with a
+live weight-sum check, a shared targeting-rules editor (reused for both flags and
+segments), a segment picker, a segments list and editor, an audit log viewer with
+expandable before/after JSON diffs, and an environments screen to create environments
+and copy their API keys. A `CorsRegistry` bean on the API now allows the console's dev
+server to call it directly. 151 tests in `toggleboard-api` (new: a CORS preflight test)
++ 6 in `toggleboard-client-sdk` + 38 in `toggleboard-console` (195 total).
+
+**Session 5 of 5 — Infrastructure & final polish: done.** `terraform/` provisions
+toggleboard-api on ECS Fargate behind an ALB, the four DynamoDB tables (matching
+`DynamoDbTableInitializer`'s schema exactly), and S3 + CloudFront serving the Angular
+console's static build — validated with `terraform fmt`/`validate` and a `terraform
+test` suite (8 assertions across 4 files) against `mock_provider`, since no real AWS
+account exists in this environment. Also adds `spring-boot-starter-actuator` exposing
+only `GET /actuator/health` (no auth) for the ALB's target-group health check. 152
+tests in `toggleboard-api` (new: the health-endpoint test) + 6 in
+`toggleboard-client-sdk` + 38 in `toggleboard-console` (196 total), all green, plus the
+8 Terraform test assertions.
