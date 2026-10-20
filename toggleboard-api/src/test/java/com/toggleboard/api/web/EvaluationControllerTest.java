@@ -8,6 +8,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -33,7 +34,8 @@ class EvaluationControllerTest {
     void setUp() throws Exception {
         environmentKey = "env-" + UUID.randomUUID().toString().substring(0, 8);
         String envBody = objectMapper.writeValueAsString(Map.of("key", environmentKey, "name", "Test Env"));
-        String response = mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(envBody))
+        String response = mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(envBody)
+                        .header("X-Role", "admin"))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         apiKey = objectMapper.readTree(response).get("apiKey").asText();
@@ -42,7 +44,7 @@ class EvaluationControllerTest {
                 "key", "always-on", "name", "Always On", "description", "desc",
                 "type", "BOOLEAN", "enabled", true, "rolloutPercentage", 100));
         mockMvc.perform(post("/api/v1/environments/" + environmentKey + "/flags")
-                        .contentType("application/json").content(flagBody))
+                        .contentType("application/json").content(flagBody).header("X-Role", "admin"))
                 .andExpect(status().isCreated());
     }
 
@@ -75,7 +77,8 @@ class EvaluationControllerTest {
     void rejectsApiKeyBelongingToAnotherEnvironment() throws Exception {
         String otherEnvKey = "env-" + UUID.randomUUID().toString().substring(0, 8);
         String otherEnvBody = objectMapper.writeValueAsString(Map.of("key", otherEnvKey, "name", "Other Env"));
-        String response = mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(otherEnvBody))
+        String response = mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(otherEnvBody)
+                        .header("X-Role", "admin"))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         String otherApiKey = objectMapper.readTree(response).get("apiKey").asText();
@@ -90,5 +93,39 @@ class EvaluationControllerTest {
     void adminCrudEndpointsDoNotRequireAnApiKey() throws Exception {
         mockMvc.perform(get("/api/v1/environments/" + environmentKey + "/flags/always-on"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void evaluateEndpointDoesNotRequireARoleHeader() throws Exception {
+        mockMvc.perform(get("/api/v1/environments/" + environmentKey + "/flags/always-on/evaluate")
+                        .param("subjectKey", "user-1")
+                        .header("X-API-Key", apiKey))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void extraQueryParametersArePassedThroughAsAttributesForTargeting() throws Exception {
+        String flagBody = objectMapper.writeValueAsString(Map.of(
+                "key", "gated", "name", "Gated", "description", "desc",
+                "type", "BOOLEAN", "enabled", true, "rolloutPercentage", 0,
+                "targetingRules", List.of(Map.of("attribute", "country", "operator", "IN", "values", List.of("US")))));
+        mockMvc.perform(post("/api/v1/environments/" + environmentKey + "/flags")
+                        .contentType("application/json").content(flagBody).header("X-Role", "admin"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/v1/environments/" + environmentKey + "/flags/gated/evaluate")
+                        .param("subjectKey", "user-1")
+                        .param("country", "US")
+                        .header("X-API-Key", apiKey))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.reason").value("TARGETING_MATCH"));
+
+        mockMvc.perform(get("/api/v1/environments/" + environmentKey + "/flags/gated/evaluate")
+                        .param("subjectKey", "user-1")
+                        .param("country", "FR")
+                        .header("X-API-Key", apiKey))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(false));
     }
 }
