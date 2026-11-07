@@ -47,7 +47,11 @@ public class FlagChangePublisher {
                 emitter.send(SseEmitter.event().name("flag-change").data(event));
             } catch (IOException | IllegalStateException e) {
                 subscribers.remove(emitter);
-                emitter.completeWithError(e);
+                try {
+                    emitter.completeWithError(e);
+                } catch (IllegalStateException ignored) {
+                    // Emitter's async context is already in an error state; nothing more to do.
+                }
             }
         }
     }
