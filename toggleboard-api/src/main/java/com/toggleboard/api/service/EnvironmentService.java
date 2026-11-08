@@ -28,8 +28,12 @@ public class EnvironmentService {
         }
         Environment environment = new Environment(key, name, generateApiKey(), Instant.now());
         environmentRepository.save(environment);
-        auditService.recordCreate(key, AuditEntityType.ENVIRONMENT, key, actor, environment);
+        auditService.recordCreate(key, AuditEntityType.ENVIRONMENT, key, actor,
+                new EnvironmentAuditSnapshot(environment.key(), environment.name(), environment.createdAt()));
         return environment;
+    }
+
+    private record EnvironmentAuditSnapshot(String key, String name, Instant createdAt) {
     }
 
     public Environment getByKey(String key) {
