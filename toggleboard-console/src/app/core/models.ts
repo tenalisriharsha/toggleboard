@@ -9,7 +9,9 @@ export type AuditEntityType = 'FLAG' | 'ENVIRONMENT' | 'SEGMENT';
 export interface ToggleboardEnvironment {
   key: string;
   name: string;
-  apiKey: string;
+  // Only present on the create response; list/get responses omit it so the
+  // live key is never returned to an unauthenticated reader.
+  apiKey?: string;
   createdAt: string;
 }
 

@@ -1,14 +1,17 @@
 package com.toggleboard.api.web;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -101,6 +104,46 @@ class EnvironmentControllerTest {
         mockMvc.perform(get("/api/v1/environments"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.key == '" + key + "')]").exists());
+    }
+
+    @Test
+    void listingEnvironmentsWithoutAnyCredentialsDoesNotExposeTheApiKey() throws Exception {
+        String key = uniqueKey();
+        String body = objectMapper.writeValueAsString(new CreateRequest(key, "Production"));
+        mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(body)
+                        .header("X-Role", "admin"))
+                .andExpect(status().isCreated());
+
+        MvcResult result = mockMvc.perform(get("/api/v1/environments"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode list = objectMapper.readTree(result.getResponse().getContentAsString());
+        JsonNode match = null;
+        for (JsonNode node : list) {
+            if (key.equals(node.path("key").asText())) {
+                match = node;
+                break;
+            }
+        }
+        assertThat(match).as("environment '%s' in unauthenticated list response", key).isNotNull();
+        assertThat(match.has("apiKey"))
+                .as("unauthenticated GET /api/v1/environments must not leak the plaintext apiKey")
+                .isFalse();
+    }
+
+    @Test
+    void gettingAnEnvironmentByKeyWithoutAnyCredentialsDoesNotExposeTheApiKey() throws Exception {
+        String key = uniqueKey();
+        String body = objectMapper.writeValueAsString(new CreateRequest(key, "Production"));
+        mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(body)
+                        .header("X-Role", "admin"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/v1/environments/" + key))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.key").value(key))
+                .andExpect(jsonPath("$.apiKey").doesNotExist());
     }
 
     private String uniqueKey() {
