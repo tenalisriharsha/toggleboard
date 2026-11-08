@@ -48,3 +48,7 @@ tr.current {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.apikey-cell .muted {
+  color: var(--text-dim);
+}
