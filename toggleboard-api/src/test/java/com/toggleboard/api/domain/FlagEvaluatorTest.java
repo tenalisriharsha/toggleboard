@@ -54,7 +54,7 @@ class FlagEvaluatorTest {
                 new Variant("treatment", "on", 50)
         );
         Flag flag = new Flag("id", "experiment", "production", "Experiment", "desc", FlagType.MULTIVARIATE,
-                true, 0, variants, "control", List.of(), List.of(), Instant.now(), Instant.now());
+                true, 100, variants, "control", List.of(), List.of(), Instant.now(), Instant.now());
 
         EvaluationResult result = evaluator.evaluate(flag, "user-1");
 
@@ -70,12 +70,52 @@ class FlagEvaluatorTest {
                 new Variant("treatment", "on", 70)
         );
         Flag flag = new Flag("id", "experiment", "production", "Experiment", "desc", FlagType.MULTIVARIATE,
-                true, 0, variants, "control", List.of(), List.of(), Instant.now(), Instant.now());
+                true, 100, variants, "control", List.of(), List.of(), Instant.now(), Instant.now());
 
         EvaluationResult first = evaluator.evaluate(flag, "user-77");
         EvaluationResult second = evaluator.evaluate(flag, "user-77");
 
         assertThat(first.variantKey()).isEqualTo(second.variantKey());
+    }
+
+    @Test
+    void multivariateFlagAtZeroPercentRolloutResolvesToDefaultForEveryone() {
+        List<Variant> variants = List.of(
+                new Variant("a", "A", 50),
+                new Variant("b", "B", 50)
+        );
+        Flag flag = new Flag("id", "zero-rollout-multi", "production", "ZeroRolloutMulti", "desc", FlagType.MULTIVARIATE,
+                true, 0, variants, "a", List.of(), List.of(), Instant.now(), Instant.now());
+
+        for (int i = 0; i < 20; i++) {
+            EvaluationResult result = evaluator.evaluate(flag, "user-" + i);
+
+            assertThat(result.enabled())
+                    .as("subject user-%d should not be exposed at a 0%% rollout", i)
+                    .isFalse();
+            assertThat(result.reason())
+                    .as("subject user-%d should fall back to DEFAULT, not ROLLOUT, at a 0%% rollout", i)
+                    .isEqualTo(EvaluationReason.DEFAULT);
+            assertThat(result.variantKey()).isEqualTo("a");
+        }
+    }
+
+    @Test
+    void multivariateFlagAtHundredPercentRolloutResolvesToVariantForEveryone() {
+        List<Variant> variants = List.of(
+                new Variant("a", "A", 50),
+                new Variant("b", "B", 50)
+        );
+        Flag flag = new Flag("id", "full-rollout-multi", "production", "FullRolloutMulti", "desc", FlagType.MULTIVARIATE,
+                true, 100, variants, "a", List.of(), List.of(), Instant.now(), Instant.now());
+
+        for (int i = 0; i < 20; i++) {
+            EvaluationResult result = evaluator.evaluate(flag, "user-" + i);
+
+            assertThat(result.enabled()).isTrue();
+            assertThat(result.reason()).isEqualTo(EvaluationReason.ROLLOUT);
+            assertThat(result.variantKey()).isIn("a", "b");
+        }
     }
 
     @Test
