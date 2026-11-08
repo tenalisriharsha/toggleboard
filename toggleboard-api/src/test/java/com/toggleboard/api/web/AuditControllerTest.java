@@ -1,5 +1,6 @@
 package com.toggleboard.api.web;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -7,10 +8,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.Map;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -28,14 +31,17 @@ class AuditControllerTest {
     private ObjectMapper objectMapper;
 
     private String environmentKey;
+    private String environmentApiKey;
 
     @BeforeEach
     void setUp() throws Exception {
         environmentKey = "env-" + UUID.randomUUID().toString().substring(0, 8);
         String body = objectMapper.writeValueAsString(Map.of("key", environmentKey, "name", "Test Env"));
-        mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(body)
+        MvcResult result = mockMvc.perform(post("/api/v1/environments").contentType("application/json").content(body)
                         .header("X-Role", "admin"))
-                .andExpect(status().isCreated());
+                .andExpect(status().isCreated())
+                .andReturn();
+        environmentApiKey = objectMapper.readTree(result.getResponse().getContentAsString()).path("apiKey").asText();
     }
 
     @Test
@@ -70,6 +76,28 @@ class AuditControllerTest {
                 .andExpect(jsonPath("$[0].actor").value("bob"))
                 .andExpect(jsonPath("$[1].action").value("CREATE"))
                 .andExpect(jsonPath("$[1].actor").value("alice"));
+    }
+
+    @Test
+    void unauthenticatedAuditReadDoesNotExposeThePlaintextApiKey() throws Exception {
+        assertThat(environmentApiKey).as("environment apiKey captured from create response").isNotBlank();
+
+        MvcResult result = mockMvc.perform(get("/api/v1/environments/" + environmentKey + "/audit"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].action").value("CREATE"))
+                .andReturn();
+
+        JsonNode entries = objectMapper.readTree(result.getResponse().getContentAsString());
+        JsonNode createEntry = entries.get(0);
+        String after = createEntry.path("after").asText("");
+        String before = createEntry.path("before").asText("");
+
+        assertThat(after)
+                .as("audit 'after' snapshot for the ENVIRONMENT CREATE entry must not leak the plaintext apiKey")
+                .doesNotContain(environmentApiKey);
+        assertThat(before)
+                .as("audit 'before' snapshot for the ENVIRONMENT CREATE entry must not leak the plaintext apiKey")
+                .doesNotContain(environmentApiKey);
     }
 
     @Test
