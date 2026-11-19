@@ -4,6 +4,7 @@ import com.toggleboard.api.domain.Environment;
 import com.toggleboard.api.service.EnvironmentService;
 import com.toggleboard.api.web.dto.CreateEnvironmentRequest;
 import com.toggleboard.api.web.dto.EnvironmentResponse;
+import com.toggleboard.api.web.dto.EnvironmentSummaryResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -39,14 +40,14 @@ public class EnvironmentController {
     }
 
     @GetMapping
-    @Operation(summary = "List all environments")
-    public List<EnvironmentResponse> listAll() {
-        return environmentService.listAll().stream().map(EnvironmentResponse::from).toList();
+    @Operation(summary = "List all environments", description = "Does not include the apiKey; that is only returned at creation time")
+    public List<EnvironmentSummaryResponse> listAll() {
+        return environmentService.listAll().stream().map(EnvironmentSummaryResponse::from).toList();
     }
 
     @GetMapping("/{key}")
-    @Operation(summary = "Get a single environment by key")
-    public EnvironmentResponse getByKey(@PathVariable String key) {
-        return EnvironmentResponse.from(environmentService.getByKey(key));
+    @Operation(summary = "Get a single environment by key", description = "Does not include the apiKey; that is only returned at creation time")
+    public EnvironmentSummaryResponse getByKey(@PathVariable String key) {
+        return EnvironmentSummaryResponse.from(environmentService.getByKey(key));
     }
 }
