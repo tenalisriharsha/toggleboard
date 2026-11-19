@@ -40,10 +40,14 @@
               <td class="mono">{{ env.key }}</td>
               <td>{{ env.name }}</td>
               <td class="mono apikey-cell">
-                <span>{{ env.apiKey }}</span>
-                <button type="button" (click)="copyApiKey(env.apiKey)">
-                  {{ copiedKey === env.apiKey ? 'Copied!' : 'Copy' }}
-                </button>
+                @if (env.apiKey) {
+                  <span>{{ env.apiKey }}</span>
+                  <button type="button" (click)="copyApiKey(env.apiKey)">
+                    {{ copiedKey === env.apiKey ? 'Copied!' : 'Copy' }}
+                  </button>
+                } @else {
+                  <span class="muted">Shown once, at creation</span>
+                }
               </td>
               <td>{{ env.createdAt | date: 'medium' }}</td>
               <td>
