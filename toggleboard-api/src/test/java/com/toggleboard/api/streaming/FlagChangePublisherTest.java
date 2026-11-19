@@ -64,6 +64,23 @@ class FlagChangePublisherTest {
         assertThat(publisher.subscriberCount("production")).isEqualTo(1);
     }
 
+    @Test
+    void publishDoesNotThrowWhenCompleteWithErrorAlsoThrowsOnAnAlreadyErroredEmitter() throws Exception {
+        SseEmitter brokenEmitter = Mockito.spy(new SseEmitter());
+        Mockito.doThrow(new java.io.IOException("broken pipe")).when(brokenEmitter).send(Mockito.any(SseEmitter.SseEventBuilder.class));
+        Mockito.doThrow(new IllegalStateException(
+                        "A non-container (application) thread attempted to use the AsyncContext after an error had occurred"))
+                .when(brokenEmitter).completeWithError(Mockito.any());
+        SseEmitter healthyEmitter = Mockito.spy(new SseEmitter());
+        publisher.register("production", brokenEmitter);
+        publisher.register("production", healthyEmitter);
+
+        publisher.publish(new FlagChangeEvent("production", "flag-a", FlagChangeAction.UPDATED, flag(), Instant.now()));
+
+        verify(healthyEmitter).send(Mockito.any(SseEmitter.SseEventBuilder.class));
+        assertThat(publisher.subscriberCount("production")).isEqualTo(1);
+    }
+
     private Flag flag() {
         Instant now = Instant.now();
         return new Flag("id-1", "flag-a", "production", "Flag A", "desc", FlagType.BOOLEAN,
