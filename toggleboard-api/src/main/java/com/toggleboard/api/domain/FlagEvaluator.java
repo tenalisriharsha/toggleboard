@@ -51,9 +51,25 @@ public class FlagEvaluator {
             return new EvaluationResult(flag.key(), inRollout, null, String.valueOf(inRollout), reason);
         }
 
-        EvaluationReason reason = matchReason != null ? matchReason : EvaluationReason.ROLLOUT;
+        if (matchReason != null) {
+            Variant variant = resolveVariant(flag, subjectKey, overrideVariantKey);
+            return new EvaluationResult(flag.key(), true, variant.key(), variant.value(), matchReason);
+        }
+
+        boolean inRollout = rolloutEngine.isInRollout(flag.key(), subjectKey, flag.rolloutPercentage());
+        if (!inRollout) {
+            return new EvaluationResult(flag.key(), false, flag.defaultVariantKey(), defaultVariantValue(flag), EvaluationReason.DEFAULT);
+        }
         Variant variant = resolveVariant(flag, subjectKey, overrideVariantKey);
-        return new EvaluationResult(flag.key(), true, variant.key(), variant.value(), reason);
+        return new EvaluationResult(flag.key(), true, variant.key(), variant.value(), EvaluationReason.ROLLOUT);
+    }
+
+    private String defaultVariantValue(Flag flag) {
+        return flag.variants().stream()
+                .filter(v -> v.key().equals(flag.defaultVariantKey()))
+                .findFirst()
+                .map(Variant::value)
+                .orElse(null);
     }
 
     private Variant resolveVariant(Flag flag, String subjectKey, String overrideVariantKey) {
