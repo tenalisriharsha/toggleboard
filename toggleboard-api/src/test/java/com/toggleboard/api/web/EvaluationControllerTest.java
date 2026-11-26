@@ -59,6 +59,18 @@ class EvaluationControllerTest {
     }
 
     @Test
+    void rejectsBlankSubjectKeyWithAStandardErrorBody() throws Exception {
+        mockMvc.perform(get("/api/v1/environments/" + environmentKey + "/flags/always-on/evaluate")
+                        .param("subjectKey", "")
+                        .header("X-API-Key", apiKey))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message").exists());
+    }
+
+    @Test
     void rejectsEvaluationWithoutApiKey() throws Exception {
         mockMvc.perform(get("/api/v1/environments/" + environmentKey + "/flags/always-on/evaluate")
                         .param("subjectKey", "user-1"))
